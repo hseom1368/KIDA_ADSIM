@@ -16,6 +16,9 @@ class MetricsCollector:
 
     def reset(self):
         """메트릭 초기화"""
+        # 사격체 참조 (defense_coverage 계산용)
+        self.shooters = []
+
         # 이벤트 기록
         self.detection_times = {}       # {threat_id: detection_time}
         self.clearance_times = {}       # {threat_id: killchain_completion_time}
@@ -116,7 +119,7 @@ class MetricsCollector:
             "ammo_efficiency": self.metric_6_ammo_efficiency(),
             "system_resilience": self.metric_7_resilience(),
             "c2_throughput": self.metric_8_c2_throughput(),
-            "defense_coverage": self.metric_9_defense_coverage(),
+            "defense_coverage": self.metric_9_defense_coverage(self.shooters),
             "node_loss_recovery_time": self.metric_10_recovery_time(),
         }
 

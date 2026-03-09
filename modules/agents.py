@@ -35,8 +35,8 @@ class SensorAgent(Agent):
         self.current_tracks = []
         self.label = params["label"]
 
-    def detect(self, threat, jamming_level=0.0):
-        """탐지 확률 계산: P(detect) = max(0, 1-(d/R_max)²) × (1-jam)"""
+    def detect(self, threat, jamming_level=0.0, detection_factor=1.0):
+        """탐지 확률 계산: P(detect) = max(0, 1-(d/R_max)²) × (1-jam) × detection_factor"""
         if not self.is_operational:
             return False
         if len(self.current_tracks) >= self.tracking_capacity:
@@ -53,7 +53,7 @@ class SensorAgent(Agent):
         if d > effective_range:
             return False
 
-        p_detect = max(0.0, 1.0 - (d / effective_range) ** 2) * (1.0 - jamming_level)
+        p_detect = max(0.0, 1.0 - (d / effective_range) ** 2) * (1.0 - jamming_level) * detection_factor
         return random.random() < p_detect
 
     def track(self, threat):

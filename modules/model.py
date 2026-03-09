@@ -43,6 +43,10 @@ class AirDefenseModel(Model):
         self.scenario = SCENARIO_PARAMS.get(scenario, SCENARIO_PARAMS["scenario_1_saturation"])
         self.time_resolution = SIM_CONFIG["time_resolution"]
         self.max_sim_time = SIM_CONFIG["max_sim_time"]
+        # 시나리오별 최대 시뮬레이션 시간 동적 조정
+        scenario_cfg = SCENARIO_PARAMS.get(scenario, SCENARIO_PARAMS["scenario_1_saturation"])
+        if "duration" in scenario_cfg:
+            self.max_sim_time = max(self.max_sim_time, scenario_cfg["duration"])
         self.sim_time = 0.0
         self.step_count = 0
         self.deployment = deployment or DEFAULT_DEPLOYMENT
@@ -60,6 +64,10 @@ class AirDefenseModel(Model):
         if hasattr(self.scenario, 'get'):
             self.jamming_level = self.scenario.get("jamming_level", jamming_level)
 
+        # 재밍 세부 파라미터 (v0.3: detection_factor, latency_factor)
+        self.detection_factor = self.scenario.get("detection_factor", 1.0) if hasattr(self.scenario, 'get') else 1.0
+        self.latency_factor = self.scenario.get("latency_factor", 1.0) if hasattr(self.scenario, 'get') else 1.0
+
         # 메트릭 수집기
         self.metrics = MetricsCollector()
 
@@ -69,6 +77,7 @@ class AirDefenseModel(Model):
         self.shooter_agents = []
         self.threat_agents = []
         self._create_defense_agents()
+        self.metrics.shooters = self.shooter_agents
 
         # 네트워크 토폴로지
         self.topology = self._build_topology()
@@ -76,6 +85,9 @@ class AirDefenseModel(Model):
         # 통신 채널 및 킬체인 프로세스
         self.comm_channel = CommChannel(self.simpy_env, architecture)
         self.comm_channel.set_jamming(self.jamming_level)
+        # 시나리오별 latency_factor 직접 설정 (set_jamming의 자동 매핑 덮어쓰기)
+        if self.latency_factor != 1.0:
+            self.comm_channel.latency_factor = self.latency_factor
 
         # C2 SimPy Resource 생성
         self.c2_resources = {}
@@ -244,14 +256,14 @@ class AirDefenseModel(Model):
                 continue
             for threat in active_threats:
                 if not threat.is_detected:
-                    if sensor.detect(threat, self.jamming_level):
+                    if sensor.detect(threat, self.jamming_level, self.detection_factor):
                         threat.is_detected = True
                         threat.detected_time = self.sim_time
                         track_info = sensor.track(threat)
                         self.metrics.record_detection(threat.unique_id, self.sim_time)
                         self._report_to_c2(sensor, track_info)
                 else:
-                    if sensor.detect(threat, self.jamming_level):
+                    if sensor.detect(threat, self.jamming_level, self.detection_factor):
                         track_info = sensor.track(threat)
                         self._report_to_c2(sensor, track_info)
 
