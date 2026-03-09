@@ -1,0 +1,308 @@
+"""
+agents.py - 한국군 방공체계 시뮬레이션 에이전트 클래스
+Mesa Agent classes: SensorAgent, C2NodeAgent, ShooterAgent, ThreatAgent
+"""
+
+import math
+import random
+from mesa import Agent
+
+from .config import SENSOR_PARAMS, C2_PARAMS, SHOOTER_PARAMS, THREAT_PARAMS
+
+
+# =============================================================================
+# SensorAgent (탐지체)
+# =============================================================================
+class SensorAgent(Agent):
+    """센서 에이전트 - EWR, PATRIOT Radar, M-SAM MFR, SHORAD Radar"""
+
+    def __init__(self, model, sensor_type, agent_id, pos):
+        super().__init__(model)
+        params = SENSOR_PARAMS[sensor_type]
+        self.sensor_type = params["sensor_type"]
+        self.detection_range = params["detection_range"]
+        self.tracking_capacity = params["tracking_capacity"]
+        self.scan_rate = params["scan_rate"]
+        self.pos = pos
+        self.agent_id = agent_id
+        self.is_operational = True
+        self.current_tracks = []
+        self.label = params["label"]
+
+    def detect(self, threat, jamming_level=0.0):
+        """탐지 확률 계산: P(detect) = max(0, 1-(d/R_max)²) × (1-jam)"""
+        if not self.is_operational:
+            return False
+        if len(self.current_tracks) >= self.tracking_capacity:
+            return False
+
+        d = math.dist(self.pos, threat.pos)
+        r_max = self.detection_range
+
+        # RCS 보정: 표준 레이더 방정식 (탐지거리 ∝ RCS^(1/4))
+        rcs_ref = 1.0  # m² 기준
+        rcs_factor = min(1.0, (threat.rcs / rcs_ref) ** 0.25)
+        effective_range = r_max * rcs_factor
+
+        if d > effective_range:
+            return False
+
+        p_detect = max(0.0, 1.0 - (d / effective_range) ** 2) * (1.0 - jamming_level)
+        return random.random() < p_detect
+
+    def track(self, threat):
+        """추적 정보 생성 (위치 오차 포함)"""
+        if threat.unique_id not in [t.unique_id for t in self.current_tracks]:
+            self.current_tracks.append(threat)
+        pos_error = random.gauss(0, 0.5)  # km 오차
+        return {
+            "sensor_id": self.agent_id,
+            "threat_id": threat.unique_id,
+            "threat_type": threat.threat_type,
+            "pos": (threat.pos[0] + pos_error, threat.pos[1] + pos_error),
+            "speed": threat.speed,
+            "altitude": threat.altitude,
+            "time": self.model.sim_time,
+        }
+
+    def remove_track(self, threat):
+        """추적 목록에서 위협 제거"""
+        self.current_tracks = [
+            t for t in self.current_tracks if t.unique_id != threat.unique_id
+        ]
+
+    def step(self):
+        """매 스텝: 추적 중인 위협 갱신"""
+        self.current_tracks = [t for t in self.current_tracks if t.is_alive]
+
+
+# =============================================================================
+# C2NodeAgent (지휘통제 노드)
+# =============================================================================
+class C2NodeAgent(Agent):
+    """C2 노드 에이전트 - MCRC, 대대 TOC, EOC"""
+
+    def __init__(self, model, node_type, agent_id, pos):
+        super().__init__(model)
+        params = C2_PARAMS[node_type]
+        self.node_type = params["node_type"]
+        self.processing_capacity = params["processing_capacity"]
+        self.auth_delay_linear = params["auth_delay_linear"]
+        self.auth_delay_killweb = params["auth_delay_killweb"]
+        self.agent_id = agent_id
+        self.pos = pos
+        self.is_operational = True
+        self.air_picture = {}           # {threat_id: track_info}
+        self.threat_queue = []          # 처리 대기열
+        self.current_load = 0           # 현재 처리 중인 위협 수
+        self.processed_count = 0        # 총 처리 완료 수
+        self.label = params["label"]
+
+    def receive_track(self, track_info):
+        """탐지보고 수신 → 항적 종합"""
+        if not self.is_operational:
+            return False
+        threat_id = track_info["threat_id"]
+        self.air_picture[threat_id] = track_info
+        return True
+
+    def evaluate_threat(self, track_info):
+        """위협 평가 → 우선순위 산출"""
+        if not self.is_operational:
+            return 0
+        threat_type = track_info["threat_type"]
+        priority_map = {"SRBM": 10, "CRUISE_MISSILE": 8, "AIRCRAFT": 6, "UAS": 3}
+        return priority_map.get(threat_type, 1)
+
+    def get_auth_delay(self, architecture):
+        """아키텍처에 따른 승인 지연 시간 반환"""
+        if architecture == "linear":
+            if self.auth_delay_linear is None:
+                return 0
+            return random.uniform(*self.auth_delay_linear)
+        else:
+            if self.auth_delay_killweb is None:
+                return 0
+            return random.uniform(*self.auth_delay_killweb)
+
+    def can_process(self):
+        """처리 가능 여부 (용량 초과 여부)"""
+        return self.is_operational and self.current_load < self.processing_capacity
+
+    def step(self):
+        """매 스텝: 소멸된 위협 항적 정리"""
+        dead_threats = []
+        for tid, info in self.air_picture.items():
+            threat_agents = [
+                a for a in self.model.agents
+                if isinstance(a, ThreatAgent) and a.unique_id == tid
+            ]
+            if not threat_agents or not threat_agents[0].is_alive:
+                dead_threats.append(tid)
+        for tid in dead_threats:
+            del self.air_picture[tid]
+
+
+# =============================================================================
+# ShooterAgent (사격체)
+# =============================================================================
+class ShooterAgent(Agent):
+    """사격 에이전트 - PATRIOT PAC-3, 천궁-II, 비호, KF-16"""
+
+    def __init__(self, model, weapon_type, agent_id, pos):
+        super().__init__(model)
+        params = SHOOTER_PARAMS[weapon_type]
+        self.weapon_type = params["weapon_type"]
+        self.max_range = params["max_range"]
+        self.min_range = params["min_range"]
+        self.max_altitude = params["max_altitude"]
+        self.pk_table = dict(params["pk_table"])
+        self.ammo_count = params["ammo_count"]
+        self.initial_ammo = params["ammo_count"]
+        self.reload_time = params["reload_time"]
+        self.engagement_time = params["engagement_time"]
+        self.agent_id = agent_id
+        self.pos = pos
+        self.is_operational = True
+        self.is_engaged = False
+        self.engagement_end_time = 0
+        self.kills = 0
+        self.shots_fired = 0
+        self.label = params["label"]
+
+    def can_engage(self, threat, pk_threshold=0.1):
+        """교전 가능 여부 (사거리, 탄약, 상태, 고도, 최소 Pk)"""
+        if not self.is_operational or self.is_engaged:
+            return False
+        if self.ammo_count <= 0:
+            return False
+        d = math.dist(self.pos, threat.pos)
+        # 유효 교전 범위: max_range의 95% (경계에서 Pk≈0 방지)
+        effective_max = self.max_range * 0.95
+        if d < self.min_range or d > effective_max:
+            return False
+        if threat.altitude > self.max_altitude:
+            return False
+        base_pk = self.pk_table.get(threat.threat_type, 0)
+        if base_pk <= 0:
+            return False
+        # 최소 Pk 확인
+        range_factor = max(0.0, 1.0 - (d / self.max_range) ** 2)
+        if base_pk * range_factor < pk_threshold:
+            return False
+        return True
+
+    def compute_pk(self, threat, jamming_level=0.0):
+        """위협 유형별 Pk 계산 (거리, 기동, 재밍 보정)"""
+        base_pk = self.pk_table.get(threat.threat_type, 0)
+        if base_pk <= 0:
+            return 0.0
+
+        d = math.dist(self.pos, threat.pos)
+        range_factor = max(0.0, 1.0 - (d / self.max_range) ** 2)
+        maneuver_penalty = 0.85 if threat.maneuvering else 1.0
+        jamming_penalty = 1.0 - (jamming_level * 0.3)
+
+        return base_pk * range_factor * maneuver_penalty * jamming_penalty
+
+    def engage(self, threat, jamming_level=0.0):
+        """교전 실행: Pk 기반 베르누이 시행"""
+        if not self.can_engage(threat):
+            return False
+
+        final_pk = self.compute_pk(threat, jamming_level)
+        self.ammo_count -= 1
+        self.shots_fired += 1
+        self.is_engaged = True
+        self.engagement_end_time = self.model.sim_time + self.engagement_time
+
+        hit = random.random() < final_pk
+        if hit:
+            self.kills += 1
+        return hit
+
+    def shooter_score(self, threat, jamming_level=0.0):
+        """Kill Web 사수 선정 점수: Pk × in_envelope × (1/load) × (1/distance)"""
+        if not self.can_engage(threat):
+            return 0.0
+
+        pk = self.compute_pk(threat, jamming_level)
+        d = math.dist(self.pos, threat.pos)
+        distance_score = 1.0 / max(d, 1.0)
+        ammo_ratio = self.ammo_count / max(self.initial_ammo, 1)
+        load_factor = 0.5 if self.is_engaged else 1.0
+
+        return pk * distance_score * ammo_ratio * load_factor
+
+    def step(self):
+        """매 스텝: 교전 종료 여부 확인"""
+        if self.is_engaged and self.model.sim_time >= self.engagement_end_time:
+            self.is_engaged = False
+
+
+# =============================================================================
+# ThreatAgent (위협체)
+# =============================================================================
+class ThreatAgent(Agent):
+    """위협 에이전트 - SRBM, 순항미사일, 항공기, UAS"""
+
+    def __init__(self, model, threat_type, pos, target_pos, launch_time=0):
+        super().__init__(model)
+        params = THREAT_PARAMS[threat_type]
+        self.threat_type = params["threat_type"]
+        self.speed = params["speed"]
+        self.altitude = params["altitude"]
+        self.rcs = params["rcs"]
+        self.maneuvering = params["maneuvering"]
+        self.pos = pos
+        self.target_pos = target_pos
+        self.launch_time = launch_time
+        self.is_alive = True
+        self.is_detected = False
+        self.detected_time = None
+        self.engaged_time = None
+        self.destroyed_time = None
+        self.reached_target_time = None
+        self.label = params["label"]
+
+    def move(self, dt):
+        """시간 스텝별 이동 (목표 방향으로 직선 이동)"""
+        if not self.is_alive:
+            return
+
+        dx = self.target_pos[0] - self.pos[0]
+        dy = self.target_pos[1] - self.pos[1]
+        dist_to_target = math.sqrt(dx ** 2 + dy ** 2)
+
+        if dist_to_target < 1.0:  # 1km 이내 = 도달
+            return
+
+        move_dist = self.speed * dt
+        if move_dist >= dist_to_target:
+            self.pos = self.target_pos
+        else:
+            ratio = move_dist / dist_to_target
+            self.pos = (
+                self.pos[0] + dx * ratio,
+                self.pos[1] + dy * ratio,
+            )
+
+    def reached_target(self):
+        """방어구역 돌파 여부"""
+        d = math.dist(self.pos, self.target_pos)
+        return d < 1.0  # 1km 이내
+
+    def destroy(self):
+        """위협 격추"""
+        self.is_alive = False
+        self.destroyed_time = self.model.sim_time
+
+    def step(self):
+        """매 스텝: 이동 및 돌파 확인"""
+        if not self.is_alive:
+            return
+        dt = self.model.time_resolution
+        self.move(dt)
+        if self.reached_target():
+            self.reached_target_time = self.model.sim_time
+            self.is_alive = False
