@@ -16,6 +16,7 @@ from mesa import Model
 from .config import (
     SIM_CONFIG, DEFAULT_DEPLOYMENT, COMM_PARAMS,
     SENSOR_PARAMS, C2_PARAMS, SHOOTER_PARAMS, SCENARIO_PARAMS,
+    ENGAGEMENT_POLICY,
 )
 from .agents import SensorAgent, C2NodeAgent, ShooterAgent, ThreatAgent
 from .network import (
@@ -387,8 +388,43 @@ class AirDefenseModel(Model):
     # =========================================================================
     # 교전 실행
     # =========================================================================
+    def _should_engage_now(self, shooter, threat):
+        """최적 교전 시점 판단: Pk가 충분하거나, 잔여 기회가 적으면 교전 개시.
+
+        - 현재 Pk ≥ optimal_pk_threshold → 교전
+        - 방어지역까지 잔여 거리 ≤ must_engage_distance → 긴급 교전
+        - 잔여 교전 기회 ≤ emergency_opportunity_count → emergency_pk_threshold 적용
+        - 그 외 → 대기 (다음 스텝에서 위협이 더 가까이 접근)
+        """
+        policy = ENGAGEMENT_POLICY
+        pk = shooter.compute_pk(threat, self.jamming_level)
+        defense_target = self.deployment["defense_target"]
+
+        # 1) Pk가 충분하면 즉시 교전
+        if pk >= policy["optimal_pk_threshold"]:
+            return True
+
+        # 2) 방어지역 근접 → 무조건 교전
+        dist_to_target = math.dist(threat.pos, defense_target)
+        if dist_to_target <= policy["must_engage_distance"]:
+            return True
+
+        # 3) 잔여 교전 기회 계산
+        dt = SIM_CONFIG["time_resolution"]
+        engagement_cycle = max(shooter.engagement_time + dt, dt)
+        time_to_target = dist_to_target / max(threat.speed, 0.001)
+        remaining_opportunities = time_to_target / engagement_cycle
+
+        if remaining_opportunities <= policy["emergency_opportunity_count"]:
+            # 긴급: 낮은 임계값이라도 교전
+            return pk >= policy["emergency_pk_threshold"]
+
+        # 4) 대기 — 위협이 더 가까이 접근할 때까지
+        return False
+
     def _execute_engagements(self):
         """교전 대기 큐의 위협에 대해 사거리 내 사수로 교전 시도.
+        최적 교전 시점을 판단하여 Pk가 충분할 때 교전 개시.
         미스 시 다음 스텝에서 재교전 가능."""
         # 교전 대기 중인 살아있는 위협
         cleared_threats = [
@@ -424,6 +460,10 @@ class AirDefenseModel(Model):
 
             if not shooter:
                 continue  # 사거리 밖 또는 모든 사수 이미 교전 → 다음 스텝
+
+            # 최적 교전 시점 판단
+            if not self._should_engage_now(shooter, threat):
+                continue  # Pk 부족 + 여유 있음 → 위협 접근 대기
 
             engaged_shooters_this_step.add(shooter.agent_id)
 

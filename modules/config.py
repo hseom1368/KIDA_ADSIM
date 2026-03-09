@@ -16,6 +16,20 @@ SIM_CONFIG = {
 }
 
 # =============================================================================
+# 1-1. 교전 정책 (Engagement Policy)
+# =============================================================================
+ENGAGEMENT_POLICY = {
+    # 최적 교전 Pk 임계값: 이 Pk 이상이면 교전 개시
+    "optimal_pk_threshold": 0.30,
+    # 긴급 교전 Pk 임계값: 잔여 교전 기회 ≤ N회이면 이 임계값 사용
+    "emergency_pk_threshold": 0.10,
+    # 잔여 교전 기회 기준: 방어지역까지 잔여 비행시간 / 교전 시간
+    "emergency_opportunity_count": 2,
+    # 방어지역 근접 거리(km): 이 이내면 무조건 교전
+    "must_engage_distance": 30.0,
+}
+
+# =============================================================================
 # 2. 센서 파라미터
 # =============================================================================
 SENSOR_PARAMS = {
@@ -152,35 +166,154 @@ SHOOTER_PARAMS = {
 THREAT_PARAMS = {
     "SRBM": {
         "threat_type": "SRBM",
-        "speed": 2.0,               # km/s (Mach 6)
-        "altitude": 50.0,           # km (정점 고도)
+        "speed": 2.0,               # km/s (Mach 6) — 레거시 기본값
+        "altitude": 50.0,           # km (정점 고도) — 레거시 기본값
         "rcs": 0.5,                 # m²
-        "maneuvering": True,        # 종말기동
+        "maneuvering": True,        # 종말기동 — 레거시 기본값
         "label": "SRBM (KN-23형)",
+        "flight_profile": {
+            "type": "ballistic",
+            "phases": [
+                {   # 부스트 단계: 발사 후 급상승·가속
+                    "name": "boost",
+                    "duration_ratio": 0.15,
+                    "altitude_start": 0.0,       # km (지상 발사)
+                    "altitude_end": 50.0,        # km (정점)
+                    "speed_start": 0.5,          # km/s
+                    "speed_end": 2.5,            # km/s (연소 종료)
+                    "maneuvering": False,
+                },
+                {   # 중간 단계: 탄도 비행 (포물선 정점)
+                    "name": "midcourse",
+                    "duration_ratio": 0.50,
+                    "altitude_start": 50.0,
+                    "altitude_end": 30.0,        # 하강 시작
+                    "speed_start": 2.5,
+                    "speed_end": 2.0,
+                    "maneuvering": False,
+                },
+                {   # 종말 단계: 급강하 + 풀업 기동
+                    "name": "terminal",
+                    "duration_ratio": 0.35,
+                    "altitude_start": 30.0,
+                    "altitude_end": 0.0,         # 목표 충돌
+                    "speed_start": 2.0,
+                    "speed_end": 3.0,            # 중력 가속
+                    "maneuvering": True,         # KN-23 풀업 기동
+                },
+            ],
+        },
     },
     "CRUISE_MISSILE": {
         "threat_type": "CRUISE_MISSILE",
-        "speed": 0.27,              # km/s (Mach 0.8)
-        "altitude": 0.03,           # km (30m 해면밀착)
+        "speed": 0.27,              # km/s (Mach 0.8) — 레거시 기본값
+        "altitude": 0.03,           # km (30m 해면밀착) — 레거시 기본값
         "rcs": 0.05,                # m²
-        "maneuvering": False,
+        "maneuvering": False,       # 레거시 기본값
         "label": "순항미사일 (금성-3형)",
+        "flight_profile": {
+            "type": "cruise",
+            "phases": [
+                {   # 부스트/상승 단계
+                    "name": "boost",
+                    "duration_ratio": 0.05,
+                    "altitude_start": 0.0,
+                    "altitude_end": 0.5,         # km (500m로 상승)
+                    "speed_start": 0.10,
+                    "speed_end": 0.27,
+                    "maneuvering": False,
+                },
+                {   # 순항 단계: 해면밀착
+                    "name": "cruise",
+                    "duration_ratio": 0.85,
+                    "altitude_start": 0.03,      # km (30m 해면밀착)
+                    "altitude_end": 0.03,
+                    "speed_start": 0.27,
+                    "speed_end": 0.27,
+                    "maneuvering": False,
+                },
+                {   # 종말 단계: 팝업 후 다이브 또는 저고도 유지
+                    "name": "terminal",
+                    "duration_ratio": 0.10,
+                    "altitude_start": 0.03,
+                    "altitude_end": 0.0,         # 목표 충돌
+                    "speed_start": 0.27,
+                    "speed_end": 0.30,           # 약간 가속
+                    "maneuvering": True,         # 종말 회피기동
+                },
+            ],
+        },
     },
     "AIRCRAFT": {
         "threat_type": "AIRCRAFT",
-        "speed": 0.34,              # km/s (Mach 1.0)
-        "altitude": 10.0,           # km
+        "speed": 0.34,              # km/s (Mach 1.0) — 레거시 기본값
+        "altitude": 10.0,           # km — 레거시 기본값
         "rcs": 5.0,                 # m²
-        "maneuvering": False,
+        "maneuvering": False,       # 레거시 기본값
         "label": "고정익 항공기",
+        "flight_profile": {
+            "type": "aircraft",
+            "phases": [
+                {   # 순항 접근
+                    "name": "ingress_high",
+                    "duration_ratio": 0.60,
+                    "altitude_start": 10.0,
+                    "altitude_end": 10.0,
+                    "speed_start": 0.34,
+                    "speed_end": 0.34,
+                    "maneuvering": False,
+                },
+                {   # 방공망 접근 시 저고도 침투
+                    "name": "ingress_low",
+                    "duration_ratio": 0.30,
+                    "altitude_start": 10.0,
+                    "altitude_end": 1.0,         # 1km으로 강하
+                    "speed_start": 0.34,
+                    "speed_end": 0.30,           # 저고도 감속
+                    "maneuvering": True,         # 회피기동
+                },
+                {   # 공격 진입
+                    "name": "attack_run",
+                    "duration_ratio": 0.10,
+                    "altitude_start": 1.0,
+                    "altitude_end": 0.5,
+                    "speed_start": 0.30,
+                    "speed_end": 0.34,
+                    "maneuvering": True,
+                },
+            ],
+        },
     },
     "UAS": {
         "threat_type": "UAS",
-        "speed": 0.05,              # km/s (~180km/h)
-        "altitude": 0.3,            # km (300m)
+        "speed": 0.05,              # km/s (~180km/h) — 레거시 기본값
+        "altitude": 0.3,            # km (300m) — 레거시 기본값
         "rcs": 0.005,               # m²
-        "maneuvering": False,
+        "maneuvering": False,       # 레거시 기본값
         "label": "UAS 군집",
+        "flight_profile": {
+            "type": "uas",
+            "phases": [
+                {   # 접근 단계
+                    "name": "approach",
+                    "duration_ratio": 0.80,
+                    "altitude_start": 0.3,
+                    "altitude_end": 0.3,
+                    "speed_start": 0.05,
+                    "speed_end": 0.05,
+                    "maneuvering": False,
+                },
+                {   # 종말 강하 (목표 근접 시 고도 낮춤)
+                    "name": "terminal",
+                    "duration_ratio": 0.20,
+                    "altitude_start": 0.3,
+                    "altitude_end": 0.05,        # 50m로 강하
+                    "speed_start": 0.05,
+                    "speed_end": 0.07,           # 최종 돌입 가속
+                    "maneuvering": True,
+                },
+            ],
+        },
     },
 }
 
