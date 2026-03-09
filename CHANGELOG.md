@@ -5,6 +5,72 @@
 
 ---
 
+## [v0.3] — 2026-03-09
+
+### 변경사항
+
+#### v0.2 미해결 이슈 전량 해소
+- `metrics.py`: `MetricsCollector.shooters` 필드 추가 → `defense_coverage` 정상 작동
+- `config.py`: 시나리오 3을 3개 하위 시나리오로 분할 (light/moderate/heavy)
+  - 각각 `detection_factor`, `latency_factor` 개별 설정
+- `model.py`: `detection_factor`/`latency_factor` 시나리오 파라미터 반영
+  - 센서 탐지 확률: `SensorAgent.detect()` → `detection_factor` 적용
+  - C2 통신 지연: `CommChannel.latency_factor` 직접 설정
+- `model.py`: 시나리오 4 `duration > max_sim_time` 동적 조정
+- `config.py`: `EXPERIMENT_CONFIG`에 시나리오 2~4 추가 (7개 시나리오 완비)
+- `tests/`: 단위 테스트 프레임워크 구축 (4개 파일, 33개 테스트)
+
+#### v0.3 검증 심화 및 코드 품질 리뷰
+- **버그 수정**: `shooter_score()`가 2D `math.dist()` → 3D `_slant_range()` 사용하도록 수정
+- **매직 넘버 제거**: 6개 하드코딩 상수를 `ENGAGEMENT_POLICY`로 이동
+  - `effective_range_ratio=0.95`, `jamming_pk_penalty=0.3`
+  - `tracking_position_error_std=0.5`, `coverage_overlap_factor=0.7`
+  - `target_arrival_distance=1.0`
+- **엣지 케이스 테스트 12개 추가** (총 45개 테스트)
+  - 탄약 소진, 극한 재밍, 노드 파괴 회복탄력성, 시나리오 4 재현성
+  - `shooter_score()` 3D 거리 검증, config 상수 검증
+
+### 전 시나리오 성능 비교표 (seed=42)
+
+| 시나리오 | 아키텍처 | 누출률% | 성공률% | S2S(s) | 격추 | 총교전 |
+|----------|----------|---------|---------|--------|------|--------|
+| S1 포화공격 | Linear | 35.6 | 37.5 | 354.4 | 12 | 32 |
+| S1 포화공격 | **KillWeb** | **11.1** | **44.4** | **4.9** | **20** | 45 |
+| S2 복합위협 | Linear | 26.3 | 29.4 | 286.5 | 10 | 34 |
+| S2 복합위협 | **KillWeb** | **10.5** | **39.0** | **5.1** | **16** | 41 |
+| S3 EW Light | Linear | 26.3 | 31.2 | 344.5 | 10 | 32 |
+| S3 EW Light | **KillWeb** | **10.5** | **57.6** | **7.3** | **19** | 33 |
+| S3 EW Moderate | Linear | 39.5 | 30.0 | 543.1 | 6 | 20 |
+| S3 EW Moderate | **KillWeb** | **21.1** | 20.8 | **14.6** | **10** | 48 |
+| S3 EW Heavy | Linear | 39.5 | 14.8 | 558.1 | 4 | 27 |
+| S3 EW Heavy | **KillWeb** | **23.7** | **30.6** | **24.5** | **11** | 36 |
+| S4 순차교전 | Linear | 37.3 | 38.5 | 150.5 | 20 | 52 |
+| S4 순차교전 | **KillWeb** | **25.4** | **47.5** | **5.0** | **28** | 59 |
+| S5 노드파괴 | Linear | 24.4 | 42.5 | 106.9 | 17 | 40 |
+| S5 노드파괴 | **KillWeb** | **11.1** | **44.4** | **4.9** | **20** | 45 |
+
+**핵심 분석**:
+- Kill Web이 **전 시나리오에서 누출률 우위** (평균 16.2% vs 32.7%)
+- EW Heavy에서도 Kill Web 누출률 23.7% vs Linear 39.5% — 재밍 내성 우수
+- EW Moderate에서 Kill Web 성공률 20.8% < Linear 30.0% — 높은 교전 빈도(48발) 대비 Pk 저하
+- S4 순차교전: Kill Web이 60분 지속 작전에서도 안정적 (누출 25.4% vs 37.3%)
+
+### 발견된 문제
+1. **생성자 `jamming_level` 파라미터 무시** — `model.py:65`에서 시나리오 config가 덮어씀
+   - 시나리오에 `jamming_level`이 정의되면 생성자 값이 무시됨
+2. **죽은 코드**: `comms.py` `linear_killchain()`/`killweb_killchain()` 미사용
+   - `model.py._killchain_process()`에 동일 로직이 중복 구현됨
+3. **죽은 설정**: `config.py` `scenario_3_ew` 원본 — 하위 시나리오로 대체됨
+
+### 개선 계획 (v0.4)
+- 생성자 `jamming_level` 오버라이드 로직 정리
+- `comms.py` 죽은 코드 정리 또는 `model.py`에서 위임하도록 리팩토링
+- 다중 교전 모델링 (동일 위협에 복수 사수 동시 교전)
+- 센서 융합 로직 고도화 (Kill Web COP 품질 차별화)
+- Monte Carlo 300회 배치 실험 실행 및 통계 분석
+
+---
+
 ## [v0.2] — 2026-03-09
 
 ### 변경사항

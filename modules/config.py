@@ -27,6 +27,16 @@ ENGAGEMENT_POLICY = {
     "emergency_opportunity_count": 2,
     # 방어지역 근접 거리(km): 이 이내면 무조건 교전
     "must_engage_distance": 30.0,
+    # 유효 교전 범위: max_range × 이 비율 (경계에서 Pk≈0 방지)
+    "effective_range_ratio": 0.95,
+    # 재밍 Pk 패널티 계수: Pk × (1 - jamming_level × 이 값)
+    "jamming_pk_penalty": 0.3,
+    # 센서 추적 위치 오차 (km, 표준편차)
+    "tracking_position_error_std": 0.5,
+    # 방어 커버리지 중첩 보정 계수
+    "coverage_overlap_factor": 0.7,
+    # 위협 목표 도달 판정 거리 (km)
+    "target_arrival_distance": 1.0,
 }
 
 # =============================================================================

@@ -7,6 +7,8 @@ import math
 import numpy as np
 from collections import defaultdict
 
+from .config import ENGAGEMENT_POLICY
+
 
 class MetricsCollector:
     """10대 성능 메트릭 자동 수집기"""
@@ -216,8 +218,7 @@ class MetricsCollector:
         for sh in shooters:
             if sh.is_operational and sh.ammo_count > 0:
                 total_area += math.pi * sh.max_range ** 2
-        # 중첩 고려 대략적 보정 (70%)
-        return total_area * 0.7
+        return total_area * ENGAGEMENT_POLICY["coverage_overlap_factor"]
 
     def metric_10_recovery_time(self):
         """메트릭 10: 노드 손실 후 복구시간 (초)"""

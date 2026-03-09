@@ -29,44 +29,39 @@ notebook1~4    — Jupyter 노트북 (모델정의, 시나리오, 배치실험, 
 - 교전 시점 판단: `_should_engage_now()` → ENGAGEMENT_POLICY 참조
 - 테스트: 변경 후 반드시 `python -m pytest tests/` 및 시나리오 1 스모크 테스트 실행
 
-## 핵심 아키텍처 비교 (v0.2 기준)
+## 핵심 아키텍처 비교 (v0.3 기준, 시나리오 1 seed=42)
 | 항목 | 선형 C2 | Kill Web |
 |------|---------|----------|
 | S2S 시간 | ~354s | ~5s (71배 빠름) |
 | 누출률 | 35.6% | **11.1%** |
 | 교전 성공률 | 37.5% | **44.4%** |
+| 격추수 | 12기 | **20기** |
 | 토폴로지 | 계층 체인 (MCRC SPOF) | 완전 메시 (분산) |
-| 사수 선택 | 유형 우선 고정 | 최적 점수 기반 |
+| 사수 선택 | 유형 우선 고정 | 최적 점수 기반 (3D 거리) |
 | 교전 시점 | 킬체인 지연으로 자연 지연 | 최적 Pk 대기 후 교전 |
 
-## 현재 버전: v0.2 (완료)
-**상태**: 비행 프로파일 + 3D 경사거리 + 최적 교전 시점 구현 완료
+## 현재 버전: v0.3 (완료)
+**상태**: v0.2 이슈 전량 해소 + 검증 심화 + 코드 품질 리뷰 완료
 
-## v0.2에서 구현된 핵심 기능
-1. **비행 프로파일 엔진** — ThreatAgent._compute_phase_state()
-   - 4종 위협 모두 단계별 동적 고도/속도/기동 (config.py flight_profile)
-   - SRBM 종말단계 30→0km 하강 → PAC-3 교전 가능 창 생성
-2. **3D 경사거리** — _slant_range(pos1, alt1, pos2, alt2)
-   - 센서 탐지, 교전 범위, Pk 계산에 고도차 반영
-3. **최적 교전 시점** — _should_engage_now(shooter, threat)
-   - Pk ≥ 0.30이면 교전, 방어지역 ≤ 30km이면 무조건 교전
-   - 잔여 교전 기회 ≤ 2회이면 emergency_pk_threshold(0.10) 적용
-   - config.py ENGAGEMENT_POLICY에서 임계값 관리
-
-## 다음 작업: v0.3 (plan.md 참조)
-1. defense_coverage 메트릭 수정 (shooters 미전달 → 항상 0.0)
-2. 시나리오 3(전자전) 재밍 레벨 동적 전환 구현
+## v0.3에서 구현/수정된 핵심 사항
+1. **defense_coverage 메트릭 수정** — MetricsCollector.shooters 필드 추가
+2. **시나리오 3 EW 3단계 분할** — light/moderate/heavy 하위 시나리오
    - detection_factor → 센서 탐지 확률, latency_factor → C2 지연
-3. 시나리오 2~4 검증 실행
-4. EXPERIMENT_CONFIG에 시나리오 2~4 추가
-5. 시나리오 4 max_sim_time 호환성 수정
-6. tests/ 단위 테스트 프레임워크 구축
+3. **시나리오 2~5 전량 검증** — 7개 시나리오 × 2 아키텍처 = 14개 조합 PASS
+4. **shooter_score() 3D 수정** — 2D math.dist() → 3D _slant_range()
+5. **매직 넘버 6개 제거** — ENGAGEMENT_POLICY로 이동
+6. **테스트 프레임워크** — 5개 파일, 45개 테스트 (엣지 케이스 포함)
 
-## 알려진 문제 (v0.2)
-- defense_coverage 메트릭 항상 0.0 (metric_9에 shooters 미전달)
-- 시나리오 3 jamming_levels 3단계 미활용 (scalar jamming_level만 사용)
-- 시나리오 4 duration(3600s) > max_sim_time(1800s) 충돌
-- tests/ 디렉토리 미존재
+## 알려진 문제 (v0.3)
+- 생성자 `jamming_level` 파라미터가 시나리오 config에 의해 덮어씌워짐
+- `comms.py` `linear_killchain()`/`killweb_killchain()` 미사용 (죽은 코드)
+- `config.py` `scenario_3_ew` 원본 설정이 하위 시나리오로 대체됨 (죽은 설정)
+
+## 다음 작업: v0.4 (plan.md 참조)
+- 생성자 jamming_level 오버라이드 로직 정리
+- comms.py 죽은 코드 정리 또는 model.py에서 위임 리팩토링
+- 다중 교전 모델링 (동일 위협에 복수 사수 동시 교전)
+- Monte Carlo 300회 배치 실험 및 통계 분석
 
 ## 자주 쓰는 명령어
 ```bash

@@ -7,7 +7,7 @@ import math
 import random
 from mesa import Agent
 
-from .config import SENSOR_PARAMS, C2_PARAMS, SHOOTER_PARAMS, THREAT_PARAMS
+from .config import SENSOR_PARAMS, C2_PARAMS, SHOOTER_PARAMS, THREAT_PARAMS, ENGAGEMENT_POLICY
 
 
 def _slant_range(pos1, alt1, pos2, alt2):
@@ -60,7 +60,7 @@ class SensorAgent(Agent):
         """추적 정보 생성 (위치 오차 포함)"""
         if threat.unique_id not in [t.unique_id for t in self.current_tracks]:
             self.current_tracks.append(threat)
-        pos_error = random.gauss(0, 0.5)  # km 오차
+        pos_error = random.gauss(0, ENGAGEMENT_POLICY["tracking_position_error_std"])
         return {
             "sensor_id": self.agent_id,
             "threat_id": threat.unique_id,
@@ -183,8 +183,7 @@ class ShooterAgent(Agent):
         if self.ammo_count <= 0:
             return False
         d = _slant_range(self.pos, 0, threat.pos, threat.altitude)
-        # 유효 교전 범위: max_range의 95% (경계에서 Pk≈0 방지)
-        effective_max = self.max_range * 0.95
+        effective_max = self.max_range * ENGAGEMENT_POLICY["effective_range_ratio"]
         if d < self.min_range or d > effective_max:
             return False
         if threat.altitude > self.max_altitude:
@@ -207,7 +206,7 @@ class ShooterAgent(Agent):
         d = _slant_range(self.pos, 0, threat.pos, threat.altitude)
         range_factor = max(0.0, 1.0 - (d / self.max_range) ** 2)
         maneuver_penalty = 0.85 if threat.maneuvering else 1.0
-        jamming_penalty = 1.0 - (jamming_level * 0.3)
+        jamming_penalty = 1.0 - (jamming_level * ENGAGEMENT_POLICY["jamming_pk_penalty"])
 
         return base_pk * range_factor * maneuver_penalty * jamming_penalty
 
@@ -233,7 +232,7 @@ class ShooterAgent(Agent):
             return 0.0
 
         pk = self.compute_pk(threat, jamming_level)
-        d = math.dist(self.pos, threat.pos)
+        d = _slant_range(self.pos, 0, threat.pos, threat.altitude)
         distance_score = 1.0 / max(d, 1.0)
         ammo_ratio = self.ammo_count / max(self.initial_ammo, 1)
         load_factor = 0.5 if self.is_engaged else 1.0
@@ -337,7 +336,7 @@ class ThreatAgent(Agent):
         dy = self.target_pos[1] - self.pos[1]
         dist_to_target = math.sqrt(dx ** 2 + dy ** 2)
 
-        if dist_to_target < 1.0:  # 1km 이내 = 도달
+        if dist_to_target < ENGAGEMENT_POLICY["target_arrival_distance"]:
             return
 
         move_dist = self.speed * dt
@@ -353,7 +352,7 @@ class ThreatAgent(Agent):
     def reached_target(self):
         """방어구역 돌파 여부"""
         d = math.dist(self.pos, self.target_pos)
-        return d < 1.0  # 1km 이내
+        return d < ENGAGEMENT_POLICY["target_arrival_distance"]
 
     def destroy(self):
         """위협 격추"""
