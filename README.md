@@ -155,8 +155,10 @@ from modules.model import AirDefenseModel
 for arch in ['linear', 'killweb']:
     m = AirDefenseModel(architecture=arch, scenario='scenario_1_saturation', seed=42)
     r = m.run_full()
-    print(f'{arch}: leaker={r[\"metrics\"][\"leaker_rate\"]:.1%}, '
-          f's2s={r[\"metrics\"][\"avg_s2s_time\"]:.1f}s')
+    s2s = r['metrics']['sensor_to_shooter_time']['mean']
+    leaker = r['metrics']['leaker_rate']
+    success = r['metrics']['engagement_success_rate']
+    print(f'{arch}: leaker={leaker:.1f}%, s2s={s2s:.1f}s, success={success:.1f}%')
 "
 ```
 
@@ -167,7 +169,7 @@ for arch in ['linear', 'killweb']:
 | 버전 | 상태 | 내용 |
 |------|------|------|
 | v0.1 | 완료 | 핵심 시뮬레이션 엔진, 10개 지표, 시나리오 1·5 |
-| v0.2 | **진행중** | 위협 비행 프로파일 현실화 (plan.md) |
-| v0.3 | 계획 | 최적 교전 시점 로직, 시나리오 2~4 확장 |
-| v0.4 | 계획 | 전자전 환경 고도화, 통신 두절 모델링 |
+| v0.2 | **완료** | 비행 프로파일 현실화 + 3D 경사거리 + 최적 교전 시점 |
+| v0.3 | **계획** | 시나리오 2~4 검증, 전자전 고도화, 테스트 프레임워크 |
+| v0.4 | 계획 | 통신 두절 모델링, 고급 전자전 |
 | v0.5 | 계획 | 시각화 대시보드, 최종 분석 보고서 |
