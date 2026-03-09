@@ -10,6 +10,12 @@ from mesa import Agent
 from .config import SENSOR_PARAMS, C2_PARAMS, SHOOTER_PARAMS, THREAT_PARAMS
 
 
+def _slant_range(pos1, alt1, pos2, alt2):
+    """3D 경사거리 = sqrt(수평거리² + 고도차²)"""
+    horiz = math.dist(pos1, pos2)
+    return math.sqrt(horiz ** 2 + (alt1 - alt2) ** 2)
+
+
 # =============================================================================
 # SensorAgent (탐지체)
 # =============================================================================
@@ -36,7 +42,7 @@ class SensorAgent(Agent):
         if len(self.current_tracks) >= self.tracking_capacity:
             return False
 
-        d = math.dist(self.pos, threat.pos)
+        d = _slant_range(self.pos, 0, threat.pos, threat.altitude)
         r_max = self.detection_range
 
         # RCS 보정: 표준 레이더 방정식 (탐지거리 ∝ RCS^(1/4))
@@ -176,7 +182,7 @@ class ShooterAgent(Agent):
             return False
         if self.ammo_count <= 0:
             return False
-        d = math.dist(self.pos, threat.pos)
+        d = _slant_range(self.pos, 0, threat.pos, threat.altitude)
         # 유효 교전 범위: max_range의 95% (경계에서 Pk≈0 방지)
         effective_max = self.max_range * 0.95
         if d < self.min_range or d > effective_max:
@@ -198,7 +204,7 @@ class ShooterAgent(Agent):
         if base_pk <= 0:
             return 0.0
 
-        d = math.dist(self.pos, threat.pos)
+        d = _slant_range(self.pos, 0, threat.pos, threat.altitude)
         range_factor = max(0.0, 1.0 - (d / self.max_range) ** 2)
         maneuver_penalty = 0.85 if threat.maneuvering else 1.0
         jamming_penalty = 1.0 - (jamming_level * 0.3)
@@ -264,11 +270,68 @@ class ThreatAgent(Agent):
         self.destroyed_time = None
         self.reached_target_time = None
         self.label = params["label"]
+        self.elapsed_flight_time = 0.0
+
+        # 비행 프로파일 초기화
+        if "flight_profile" in params:
+            phases = params["flight_profile"]["phases"]
+            # 가중평균 속도로 전체 비행시간 추정
+            total_dist = math.dist(pos, target_pos)
+            avg_speed = sum(
+                p["duration_ratio"] * (p["speed_start"] + p["speed_end"]) / 2
+                for p in phases
+            )
+            self.total_flight_time = total_dist / max(avg_speed, 0.001)
+
+            # 각 단계 절대 시각 계산
+            t = 0.0
+            self.phase_timeline = []
+            for p in phases:
+                duration = p["duration_ratio"] * self.total_flight_time
+                self.phase_timeline.append({
+                    "name": p["name"],
+                    "start_time": t,
+                    "end_time": t + duration,
+                    "duration": max(duration, 0.001),
+                    "altitude_start": p["altitude_start"],
+                    "altitude_end": p["altitude_end"],
+                    "speed_start": p["speed_start"],
+                    "speed_end": p["speed_end"],
+                    "maneuvering": p["maneuvering"],
+                })
+                t += duration
+        else:
+            # 레거시: 고정 고도/속도
+            self.phase_timeline = None
+            self.total_flight_time = None
+
+    def _compute_phase_state(self, elapsed):
+        """경과 시간 기반 현재 비행 단계의 고도·속도·기동여부 계산"""
+        for phase in self.phase_timeline:
+            if elapsed <= phase["end_time"]:
+                progress = (elapsed - phase["start_time"]) / phase["duration"]
+                progress = max(0.0, min(1.0, progress))
+
+                alt = phase["altitude_start"] + (phase["altitude_end"] - phase["altitude_start"]) * progress
+                spd = phase["speed_start"] + (phase["speed_end"] - phase["speed_start"]) * progress
+                maneuvering = phase["maneuvering"]
+                return alt, spd, maneuvering
+
+        # 마지막 단계 이후
+        last = self.phase_timeline[-1]
+        return last["altitude_end"], last["speed_end"], last["maneuvering"]
 
     def move(self, dt):
-        """시간 스텝별 이동 (목표 방향으로 직선 이동)"""
+        """시간 스텝별 이동 (목표 방향으로 직선 이동, 비행 프로파일 반영)"""
         if not self.is_alive:
             return
+
+        self.elapsed_flight_time += dt
+
+        # 비행 프로파일에서 현재 상태 계산
+        if self.phase_timeline is not None:
+            self.altitude, self.speed, self.maneuvering = \
+                self._compute_phase_state(self.elapsed_flight_time)
 
         dx = self.target_pos[0] - self.pos[0]
         dy = self.target_pos[1] - self.pos[1]
