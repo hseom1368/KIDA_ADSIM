@@ -27,6 +27,16 @@ ENGAGEMENT_POLICY = {
     "emergency_opportunity_count": 2,
     # 방어지역 근접 거리(km): 이 이내면 무조건 교전
     "must_engage_distance": 30.0,
+    # 유효 교전 범위: max_range × 이 비율 (경계에서 Pk≈0 방지)
+    "effective_range_ratio": 0.95,
+    # 재밍 Pk 패널티 계수: Pk × (1 - jamming_level × 이 값)
+    "jamming_pk_penalty": 0.3,
+    # 센서 추적 위치 오차 (km, 표준편차)
+    "tracking_position_error_std": 0.5,
+    # 방어 커버리지 중첩 보정 계수
+    "coverage_overlap_factor": 0.7,
+    # 위협 목표 도달 판정 거리 (km)
+    "target_arrival_distance": 1.0,
 }
 
 # =============================================================================
@@ -387,6 +397,48 @@ SCENARIO_PARAMS = {
         "jamming_level": 0.5,      # 기본 moderate
         "node_destruction": [],
     },
+    "scenario_3_ew_light": {
+        "name": "전자전 (Light)",
+        "description": "재밍 Light: detection_factor=0.8, latency_factor=1.5",
+        "waves": [
+            {"time": 0, "threats": {"SRBM": 10, "CRUISE_MISSILE": 5,
+                                     "AIRCRAFT": 3, "UAS": 20}},
+        ],
+        "approach_azimuth": (240, 360),
+        "approach_distance": 200,
+        "jamming_level": 0.2,
+        "detection_factor": 0.8,
+        "latency_factor": 1.5,
+        "node_destruction": [],
+    },
+    "scenario_3_ew_moderate": {
+        "name": "전자전 (Moderate)",
+        "description": "재밍 Moderate: detection_factor=0.5, latency_factor=3.0",
+        "waves": [
+            {"time": 0, "threats": {"SRBM": 10, "CRUISE_MISSILE": 5,
+                                     "AIRCRAFT": 3, "UAS": 20}},
+        ],
+        "approach_azimuth": (240, 360),
+        "approach_distance": 200,
+        "jamming_level": 0.5,
+        "detection_factor": 0.5,
+        "latency_factor": 3.0,
+        "node_destruction": [],
+    },
+    "scenario_3_ew_heavy": {
+        "name": "전자전 (Heavy)",
+        "description": "재밍 Heavy: detection_factor=0.2, latency_factor=5.0",
+        "waves": [
+            {"time": 0, "threats": {"SRBM": 10, "CRUISE_MISSILE": 5,
+                                     "AIRCRAFT": 3, "UAS": 20}},
+        ],
+        "approach_azimuth": (240, 360),
+        "approach_distance": 200,
+        "jamming_level": 0.8,
+        "detection_factor": 0.2,
+        "latency_factor": 5.0,
+        "node_destruction": [],
+    },
     "scenario_4_sequential": {
         "name": "순차교전 (지속작전)",
         "description": "Poisson 도착, 60분간 ~60 위협",
@@ -463,6 +515,14 @@ EXPERIMENT_CONFIG = {
     "monte_carlo_runs": 300,
     "pilot_runs": 10,
     "architectures": ["linear", "killweb"],
-    "scenarios": ["scenario_1_saturation", "scenario_5_node_destruction"],
+    "scenarios": [
+        "scenario_1_saturation",
+        "scenario_2_complex",
+        "scenario_3_ew_light",
+        "scenario_3_ew_moderate",
+        "scenario_3_ew_heavy",
+        "scenario_4_sequential",
+        "scenario_5_node_destruction",
+    ],
     "checkpoint_interval": 50,      # 50회마다 중간 저장
 }
