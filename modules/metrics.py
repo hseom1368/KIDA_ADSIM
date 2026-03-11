@@ -56,6 +56,10 @@ class MetricsCollector:
         # 사수별 탄약 사용
         self.ammo_usage = {}            # {shooter_id: shots_fired}
 
+        # v0.4: 다중 교전 추적
+        self.multi_engagements = []     # [(threat_id, time, num_shooters)]
+        self.total_multi_engagement_count = 0
+
     def record_detection(self, threat_id, time):
         """탐지 기록"""
         if threat_id not in self.detection_times:
@@ -98,6 +102,11 @@ class MetricsCollector:
         """C2 의사결정 기록"""
         self.c2_decisions.append((time, c2_id))
 
+    def record_multi_engagement(self, threat_id, time, num_shooters):
+        """다중 교전 기록 (2기 이상 사수가 동일 위협에 동시 교전)"""
+        self.multi_engagements.append((threat_id, time, num_shooters))
+        self.total_multi_engagement_count += 1
+
     def record_node_loss(self, time):
         """노드 손실 시점 기록"""
         self.node_loss_time = time
@@ -123,6 +132,8 @@ class MetricsCollector:
             "c2_throughput": self.metric_8_c2_throughput(),
             "defense_coverage": self.metric_9_defense_coverage(self.shooters),
             "node_loss_recovery_time": self.metric_10_recovery_time(),
+            "multi_engagement_rate": self.metric_11_multi_engagement_rate(),
+            "avg_shooters_per_multi_engagement": self.metric_12_avg_shooters(),
         }
 
     def metric_1_sensor_to_shooter(self):
@@ -225,6 +236,18 @@ class MetricsCollector:
         if self.node_loss_time is None or self.recovery_time is None:
             return 0.0
         return self.recovery_time - self.node_loss_time
+
+    def metric_11_multi_engagement_rate(self):
+        """메트릭 11: 다중 교전 비율 (%) — 2기 이상 사수가 동시 교전한 위협 비율"""
+        if self.threats_engaged == 0:
+            return 0.0
+        return (self.total_multi_engagement_count / self.threats_engaged) * 100
+
+    def metric_12_avg_shooters(self):
+        """메트릭 12: 다중 교전 시 평균 동시 사수 수"""
+        if not self.multi_engagements:
+            return 0.0
+        return sum(n for _, _, n in self.multi_engagements) / len(self.multi_engagements)
 
     def to_dict(self):
         """결과를 딕셔너리로 반환 (DataFrame 변환용)"""

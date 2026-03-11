@@ -36,7 +36,7 @@ class AirDefenseModel(Model):
     """
 
     def __init__(self, architecture="linear", scenario="scenario_1_saturation",
-                 jamming_level=0.0, seed=None, deployment=None):
+                 jamming_level=None, seed=None, deployment=None):
         super().__init__(seed=seed)
         self.architecture = architecture
         self.scenario_name = scenario
@@ -59,10 +59,13 @@ class AirDefenseModel(Model):
         # SimPy 환경
         self.simpy_env = simpy.Environment()
 
-        # 재밍 수준
-        self.jamming_level = jamming_level
-        if hasattr(self.scenario, 'get'):
-            self.jamming_level = self.scenario.get("jamming_level", jamming_level)
+        # 재밍 수준: 명시적 파라미터 > 시나리오 config > 기본값 0.0
+        if jamming_level is not None:
+            self.jamming_level = jamming_level
+        elif hasattr(self.scenario, 'get'):
+            self.jamming_level = self.scenario.get("jamming_level", 0.0)
+        else:
+            self.jamming_level = 0.0
 
         # 재밍 세부 파라미터 (v0.3: detection_factor, latency_factor)
         self.detection_factor = self.scenario.get("detection_factor", 1.0) if hasattr(self.scenario, 'get') else 1.0
@@ -436,7 +439,7 @@ class AirDefenseModel(Model):
 
     def _execute_engagements(self):
         """교전 대기 큐의 위협에 대해 사거리 내 사수로 교전 시도.
-        최적 교전 시점을 판단하여 Pk가 충분할 때 교전 개시.
+        v0.4: 위협 우선도 기반 다중 교전 — 고위협에 복수 사수 동시 교전.
         미스 시 다음 스텝에서 재교전 가능."""
         # 교전 대기 중인 살아있는 위협
         cleared_threats = [
@@ -460,35 +463,50 @@ class AirDefenseModel(Model):
 
         # 이번 스텝에서 교전한 사수 추적 (1사수 1교전/스텝)
         engaged_shooters_this_step = set()
+        policy = ENGAGEMENT_POLICY
 
         for threat in cleared_threats:
             if not threat.is_alive:
                 continue
 
-            # 사수 선정 (이번 스텝에서 아직 교전하지 않은 사수 중)
-            shooter = self._find_available_shooter(
-                threat, engaged_shooters_this_step
+            # 위협 유형별 최대 동시 교전 사수 수 결정
+            max_shooters = policy["max_simultaneous_shooters"].get(
+                threat.threat_type, policy["default_max_simultaneous"]
             )
 
-            if not shooter:
-                continue  # 사거리 밖 또는 모든 사수 이미 교전 → 다음 스텝
+            # 가용 사수 탐색 (최대 max_shooters기)
+            assigned_shooters = []
+            for _ in range(max_shooters):
+                shooter = self._find_available_shooter(
+                    threat, engaged_shooters_this_step
+                )
+                if not shooter:
+                    break
+                if not self._should_engage_now(shooter, threat):
+                    break
+                assigned_shooters.append(shooter)
+                engaged_shooters_this_step.add(shooter.agent_id)
 
-            # 최적 교전 시점 판단
-            if not self._should_engage_now(shooter, threat):
-                continue  # Pk 부족 + 여유 있음 → 위협 접근 대기
+            if not assigned_shooters:
+                continue
 
-            engaged_shooters_this_step.add(shooter.agent_id)
+            self._execute_multi_engagement(threat, assigned_shooters)
 
-            # 최적 사수 비교 (메트릭용)
+    def _execute_multi_engagement(self, threat, shooters):
+        """다중 사수 동시 교전 실행.
+        각 사수는 독립적으로 교전하며, 하나라도 명중하면 격추."""
+        if threat.engaged_time is None:
+            threat.engaged_time = self.sim_time
+
+        # 각 사수별 독립 교전 결과 수집
+        individual_hits = []
+        for shooter in shooters:
+            hit = shooter.engage(threat, self.jamming_level)
+            individual_hits.append((shooter, hit))
+
+            # 최적 사수 비교 (메트릭용 — 첫 번째 사수 기준)
             optimal = self._find_best_shooter(threat)
             optimal_id = optimal.agent_id if optimal else shooter.agent_id
-
-            # 첫 교전 시간 기록
-            if threat.engaged_time is None:
-                threat.engaged_time = self.sim_time
-
-            # 교전 실행
-            hit = shooter.engage(threat, self.jamming_level)
 
             self.metrics.record_engagement(
                 threat.unique_id, self.sim_time,
@@ -501,17 +519,25 @@ class AirDefenseModel(Model):
                 f"Pk={shooter.compute_pk(threat, self.jamming_level):.2f}"
             )
 
-            if hit:
-                threat.destroy()
+        # 다중 교전 메트릭 기록 (2기 이상일 때만)
+        if len(shooters) > 1:
+            self.metrics.record_multi_engagement(
+                threat.unique_id, self.sim_time, len(shooters)
+            )
 
-            # 노드 손실 후 첫 교전 → 복구 시간 기록
-            if (self.metrics.node_loss_time is not None
-                    and self.metrics.recovery_time is None):
-                self.metrics.recovery_time = self.sim_time
-                if self.metrics.total_shots > 0:
-                    self.metrics.post_loss_performance = (
-                        self.metrics.total_kills / self.metrics.total_shots
-                    )
+        # 하나라도 명중하면 격추
+        any_hit = any(hit for _, hit in individual_hits)
+        if any_hit:
+            threat.destroy()
+
+        # 노드 손실 후 첫 교전 → 복구 시간 기록
+        if (self.metrics.node_loss_time is not None
+                and self.metrics.recovery_time is None):
+            self.metrics.recovery_time = self.sim_time
+            if self.metrics.total_shots > 0:
+                self.metrics.post_loss_performance = (
+                    self.metrics.total_kills / self.metrics.total_shots
+                )
 
     # =========================================================================
     # 사수 선정
