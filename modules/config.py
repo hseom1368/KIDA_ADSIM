@@ -37,6 +37,16 @@ ENGAGEMENT_POLICY = {
     "coverage_overlap_factor": 0.7,
     # 위협 목표 도달 판정 거리 (km)
     "target_arrival_distance": 1.0,
+    # ── 다중 교전 정책 (v0.4) ──
+    # 위협 유형별 최대 동시 교전 사수 수
+    "max_simultaneous_shooters": {
+        "SRBM": 3,
+        "CRUISE_MISSILE": 2,
+        "AIRCRAFT": 1,
+        "UAS": 1,
+    },
+    # 다중 교전 기본값 (미정의 위협 유형)
+    "default_max_simultaneous": 1,
 }
 
 # =============================================================================
@@ -378,23 +388,6 @@ SCENARIO_PARAMS = {
         "approach_azimuth": (240, 360),
         "approach_distance": 200,
         "jamming_level": 0.0,
-        "node_destruction": [],
-    },
-    "scenario_3_ew": {
-        "name": "전자전 환경",
-        "description": "재밍 3단계 (light/moderate/heavy)",
-        "waves": [
-            {"time": 0, "threats": {"SRBM": 10, "CRUISE_MISSILE": 5,
-                                     "AIRCRAFT": 3, "UAS": 20}},
-        ],
-        "approach_azimuth": (240, 360),
-        "approach_distance": 200,
-        "jamming_levels": {
-            "light": {"detection_factor": 0.8, "latency_factor": 1.5},
-            "moderate": {"detection_factor": 0.5, "latency_factor": 3.0},
-            "heavy": {"detection_factor": 0.2, "latency_factor": 5.0},
-        },
-        "jamming_level": 0.5,      # 기본 moderate
         "node_destruction": [],
     },
     "scenario_3_ew_light": {
