@@ -7,7 +7,7 @@ import math
 import random
 from mesa import Agent
 
-from .config import SENSOR_PARAMS, C2_PARAMS, SHOOTER_PARAMS, THREAT_PARAMS, ENGAGEMENT_POLICY
+from .config import SENSOR_PARAMS, C2_PARAMS, SHOOTER_PARAMS, THREAT_PARAMS, ENGAGEMENT_POLICY, COP_CONFIG
 
 
 def _slant_range(pos1, alt1, pos2, alt2):
@@ -103,6 +103,9 @@ class C2NodeAgent(Agent):
         self.current_load = 0           # 현재 처리 중인 위협 수
         self.processed_count = 0        # 총 처리 완료 수
         self.label = params["label"]
+        # v0.5: COP 확장 (Kill Web 전용)
+        self.friendly_status = {}       # {shooter_id: status_dict}
+        self.engagement_plan = {}       # {threat_id: plan_dict}
 
     def receive_track(self, track_info):
         """탐지보고 수신 → 항적 종합"""
@@ -111,6 +114,14 @@ class C2NodeAgent(Agent):
         threat_id = track_info["threat_id"]
         self.air_picture[threat_id] = track_info
         return True
+
+    def update_friendly_status(self, shooter_id, status_dict):
+        """Kill Web 전용: 아군 사수 상태 갱신"""
+        self.friendly_status[shooter_id] = status_dict
+
+    def update_engagement_plan(self, threat_id, plan_dict):
+        """Kill Web 전용: 교전 계획 공유"""
+        self.engagement_plan[threat_id] = plan_dict
 
     def evaluate_threat(self, track_info):
         """위협 평가 → 우선순위 산출"""
@@ -210,12 +221,12 @@ class ShooterAgent(Agent):
 
         return base_pk * range_factor * maneuver_penalty * jamming_penalty
 
-    def engage(self, threat, jamming_level=0.0):
-        """교전 실행: Pk 기반 베르누이 시행"""
+    def engage(self, threat, jamming_level=0.0, pk_bonus=0.0):
+        """교전 실행: Pk 기반 베르누이 시행. pk_bonus: 센서 융합 보너스 (v0.5)"""
         if not self.can_engage(threat):
             return False
 
-        final_pk = self.compute_pk(threat, jamming_level)
+        final_pk = min(1.0, self.compute_pk(threat, jamming_level) + pk_bonus)
         self.ammo_count -= 1
         self.shots_fired += 1
         self.is_engaged = True

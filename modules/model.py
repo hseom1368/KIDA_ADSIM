@@ -16,7 +16,7 @@ from mesa import Model
 from .config import (
     SIM_CONFIG, DEFAULT_DEPLOYMENT, COMM_PARAMS,
     SENSOR_PARAMS, C2_PARAMS, SHOOTER_PARAMS, SCENARIO_PARAMS,
-    ENGAGEMENT_POLICY,
+    ENGAGEMENT_POLICY, COP_CONFIG, ADAPTIVE_ENGAGEMENT, COMM_DEGRADATION,
 )
 from .agents import SensorAgent, C2NodeAgent, ShooterAgent, ThreatAgent
 from .network import (
@@ -36,9 +36,12 @@ class AirDefenseModel(Model):
     """
 
     def __init__(self, architecture="linear", scenario="scenario_1_saturation",
-                 jamming_level=None, seed=None, deployment=None):
+                 jamming_level=None, seed=None, deployment=None,
+                 record_snapshots=False):
         super().__init__(seed=seed)
         self.architecture = architecture
+        self.record_snapshots = record_snapshots
+        self.snapshots = []
         self.scenario_name = scenario
         self.scenario = SCENARIO_PARAMS.get(scenario, SCENARIO_PARAMS["scenario_1_saturation"])
         self.time_resolution = SIM_CONFIG["time_resolution"]
@@ -196,14 +199,22 @@ class AirDefenseModel(Model):
         for agent in self.shooter_agents:
             agent.step()
 
-        # 8. 누출 확인
+        # 8. Kill Web COP: 아군 상태 공유
+        if self.architecture == "killweb":
+            self._update_friendly_status()
+
+        # 9. 스냅샷 기록 (시각화 모드)
+        if self.record_snapshots:
+            self._record_snapshot()
+
+        # 10. 누출 확인
         self._check_leakers()
 
-        # 9. 동시 교전 수 기록
+        # 11. 동시 교전 수 기록
         concurrent = sum(1 for sh in self.shooter_agents if sh.is_engaged)
         self.metrics.record_concurrent_engagements(concurrent, self.sim_time)
 
-        # 10. 종료 조건
+        # 12. 종료 조건
         self.step_count += 1
         active = [t for t in self.threat_agents if t.is_alive]
         pending = [t for t in self.threat_agents if t.launch_time > self.sim_time]
@@ -274,7 +285,35 @@ class AirDefenseModel(Model):
         c2_ids = get_connected_c2_for_sensor(self.topology, sensor.agent_id)
         for c2 in self.c2_agents:
             if c2.agent_id in c2_ids and c2.is_operational:
-                c2.receive_track(track_info)
+                if self.architecture == "killweb":
+                    self._fuse_tracks(track_info["threat_id"], track_info, c2)
+                else:
+                    c2.receive_track(track_info)
+
+    def _fuse_tracks(self, threat_id, new_track, c2_node):
+        """Kill Web: 복수 센서 추적 시 융합 오차 감소 (√N 법칙)"""
+        existing = c2_node.air_picture.get(threat_id)
+        base_error = ENGAGEMENT_POLICY["tracking_position_error_std"]
+
+        if existing and "tracking_sensors" in existing:
+            sensors = existing["tracking_sensors"]
+            if new_track["sensor_id"] not in sensors:
+                sensors.append(new_track["sensor_id"])
+            n = len(sensors)
+            if COP_CONFIG["fusion_error_reduction"]:
+                fused_error = max(base_error / math.sqrt(n),
+                                  COP_CONFIG["min_fused_error"])
+            else:
+                fused_error = base_error
+            existing["fused_error"] = fused_error
+            existing["pos"] = new_track["pos"]
+            existing["speed"] = new_track["speed"]
+            existing["altitude"] = new_track["altitude"]
+            existing["time"] = new_track["time"]
+        else:
+            new_track["tracking_sensors"] = [new_track["sensor_id"]]
+            new_track["fused_error"] = base_error
+            c2_node.air_picture[threat_id] = new_track
 
     # =========================================================================
     # 킬체인 프로세스 (SimPy)
@@ -469,10 +508,10 @@ class AirDefenseModel(Model):
             if not threat.is_alive:
                 continue
 
-            # 위협 유형별 최대 동시 교전 사수 수 결정
-            max_shooters = policy["max_simultaneous_shooters"].get(
-                threat.threat_type, policy["default_max_simultaneous"]
-            )
+            # 위협 유형별 최대 동시 교전 사수 수 결정 (v0.5: 적응형)
+            max_shooters = self._get_adaptive_max_shooters(threat)
+            if max_shooters <= 0:
+                continue
 
             # 가용 사수 탐색 (최대 max_shooters기)
             assigned_shooters = []
@@ -490,18 +529,36 @@ class AirDefenseModel(Model):
             if not assigned_shooters:
                 continue
 
+            # Kill Web: 교전 계획 공유
+            self._update_engagement_plan(threat, assigned_shooters)
             self._execute_multi_engagement(threat, assigned_shooters)
 
     def _execute_multi_engagement(self, threat, shooters):
         """다중 사수 동시 교전 실행.
-        각 사수는 독립적으로 교전하며, 하나라도 명중하면 격추."""
+        각 사수는 독립적으로 교전하며, 하나라도 명중하면 격추.
+        v0.5: Kill Web 센서 융합 Pk 보너스 적용."""
         if threat.engaged_time is None:
             threat.engaged_time = self.sim_time
+
+        # Kill Web: 센서 융합 Pk 보너스 계산
+        fusion_pk_bonus = 0.0
+        if self.architecture == "killweb":
+            for c2 in self.c2_agents:
+                if c2.is_operational and threat.unique_id in c2.air_picture:
+                    track = c2.air_picture[threat.unique_id]
+                    fused_error = track.get("fused_error",
+                                            ENGAGEMENT_POLICY["tracking_position_error_std"])
+                    base_error = ENGAGEMENT_POLICY["tracking_position_error_std"]
+                    if base_error > 0:
+                        fusion_pk_bonus = ((base_error - fused_error) / base_error
+                                           * COP_CONFIG["fusion_pk_bonus_max"])
+                    break
 
         # 각 사수별 독립 교전 결과 수집
         individual_hits = []
         for shooter in shooters:
-            hit = shooter.engage(threat, self.jamming_level)
+            hit = shooter.engage(threat, self.jamming_level,
+                                 pk_bonus=fusion_pk_bonus)
             individual_hits.append((shooter, hit))
 
             # 최적 사수 비교 (메트릭용 — 첫 번째 사수 기준)
@@ -540,6 +597,109 @@ class AirDefenseModel(Model):
                 )
 
     # =========================================================================
+    # COP 품질 차별화 (v0.5)
+    # =========================================================================
+    def _update_friendly_status(self):
+        """Kill Web: 모든 C2 노드에 아군 사수 상태 공유"""
+        for c2 in self.c2_agents:
+            if not c2.is_operational:
+                continue
+            for sh in self.shooter_agents:
+                c2.update_friendly_status(sh.agent_id, {
+                    "pos": sh.pos,
+                    "ammo_remaining": sh.ammo_count,
+                    "max_ammo": sh.initial_ammo,
+                    "is_engaged": sh.is_engaged,
+                    "is_operational": sh.is_operational,
+                })
+
+    def _update_engagement_plan(self, threat, assigned_shooters):
+        """Kill Web: 교전 계획을 C2 노드에 공유"""
+        if self.architecture != "killweb":
+            return
+        plan = {
+            "assigned_shooters": [s.agent_id for s in assigned_shooters],
+            "planned_engagement_time": self.sim_time,
+            "threat_type": threat.threat_type,
+        }
+        for c2 in self.c2_agents:
+            if c2.is_operational:
+                c2.update_engagement_plan(threat.unique_id, plan)
+
+    def _record_snapshot(self):
+        """현재 시점 에이전트 상태 스냅샷 기록 (시각화용)"""
+        snapshot = {
+            "time": self.sim_time,
+            "threats": [
+                {"id": t.unique_id, "pos": t.pos, "altitude": t.altitude,
+                 "speed": t.speed, "alive": t.is_alive, "type": t.threat_type,
+                 "detected": t.is_detected}
+                for t in self.threat_agents
+            ],
+            "sensors": [
+                {"id": s.agent_id, "pos": s.pos,
+                 "tracking": [t.unique_id for t in s.current_tracks],
+                 "operational": s.is_operational,
+                 "detection_range": s.detection_range}
+                for s in self.sensor_agents
+            ],
+            "shooters": [
+                {"id": s.agent_id, "pos": s.pos, "ammo": s.ammo_count,
+                 "max_ammo": s.initial_ammo, "engaged": s.is_engaged,
+                 "operational": s.is_operational,
+                 "max_range": s.max_range, "weapon_type": s.weapon_type}
+                for s in self.shooter_agents
+            ],
+            "c2_nodes": [
+                {"id": c.agent_id, "pos": c.pos,
+                 "tracks": len(c.air_picture),
+                 "operational": c.is_operational}
+                for c in self.c2_agents
+            ],
+            "events": [
+                e for e in self.killchain.event_log
+                if e["time"] >= self.sim_time - self.time_resolution
+                and e["time"] <= self.sim_time
+            ],
+        }
+        self.snapshots.append(snapshot)
+
+    # =========================================================================
+    # 적응형 교전 (v0.5)
+    # =========================================================================
+    def _get_adaptive_max_shooters(self, threat):
+        """잔여 탄약 기반 교전 규모 결정 (Kill Web 전용)"""
+        if self.architecture != "killweb":
+            return ENGAGEMENT_POLICY["max_simultaneous_shooters"].get(
+                threat.threat_type,
+                ENGAGEMENT_POLICY["default_max_simultaneous"]
+            )
+
+        # 가용 사수의 평균 탄약 비율 계산
+        available = [s for s in self.shooter_agents
+                     if s.is_operational and s.ammo_count > 0]
+        if not available:
+            return 0
+
+        avg_ammo_ratio = np.mean([s.ammo_count / max(s.initial_ammo, 1)
+                                  for s in available])
+
+        if avg_ammo_ratio <= ADAPTIVE_ENGAGEMENT["critical_ammo_ratio"]:
+            # 위기 모드: 고위협만 교전
+            if threat.threat_type not in ADAPTIVE_ENGAGEMENT["critical_threat_types"]:
+                return 0
+            return 1
+
+        if avg_ammo_ratio <= ADAPTIVE_ENGAGEMENT["ammo_threshold_ratio"]:
+            return ADAPTIVE_ENGAGEMENT["degraded_max_shooters"]
+
+        # 정상 모드: 기존 다중 교전 정책
+        return ENGAGEMENT_POLICY["max_simultaneous_shooters"].get(
+            threat.threat_type,
+            ENGAGEMENT_POLICY["default_max_simultaneous"]
+        )
+
+    # =========================================================================
     # 사수 선정
     # =========================================================================
     def _find_available_shooter(self, threat, excluded_shooters=None):
@@ -572,14 +732,34 @@ class AirDefenseModel(Model):
         return None
 
     def _find_best_shooter(self, threat, excluded=None):
-        """Kill Web: 가중합 점수 기반 최적 사수 선정"""
+        """Kill Web: 가중합 점수 기반 최적 사수 선정.
+        v0.5: COP 아군 상태 공유 시 재장전 중 사수 회피, 탄약 풍부 사수 우선."""
         excluded = excluded or set()
         best_score = 0
         best_shooter = None
+
+        # Kill Web COP에서 아군 상태 정보 수집
+        friendly_info = {}
+        if self.architecture == "killweb":
+            for c2 in self.c2_agents:
+                if c2.is_operational and c2.friendly_status:
+                    friendly_info = c2.friendly_status
+                    break
+
         for sh in self.shooter_agents:
             if sh.agent_id in excluded:
                 continue
             score = sh.shooter_score(threat, self.jamming_level)
+            if score <= 0:
+                continue
+
+            # v0.5: 아군 상태 정보 활용 보너스
+            if friendly_info and sh.agent_id in friendly_info:
+                status = friendly_info[sh.agent_id]
+                ammo_ratio = status["ammo_remaining"] / max(status["max_ammo"], 1)
+                if not status["is_engaged"] and ammo_ratio > 0.3:
+                    score += COP_CONFIG["friendly_status_bonus"]
+
             if score > best_score:
                 best_score = score
                 best_shooter = sh
@@ -602,7 +782,7 @@ class AirDefenseModel(Model):
     # 결과
     # =========================================================================
     def get_results(self):
-        return {
+        result = {
             "architecture": self.architecture,
             "scenario": self.scenario_name,
             "jamming_level": self.jamming_level,
@@ -613,6 +793,13 @@ class AirDefenseModel(Model):
             "topology_stats": get_topology_stats(self.topology),
             "event_log": self.killchain.event_log,
         }
+        if self.record_snapshots:
+            result["snapshots"] = self.snapshots
+            result["config"] = {
+                "area_size": SIM_CONFIG["area_size"],
+                "defense_target": self.deployment["defense_target"],
+            }
+        return result
 
     def run_full(self):
         while self.running:

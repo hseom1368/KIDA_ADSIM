@@ -134,8 +134,9 @@ KIDA_ADSIM/
 │   ├── comms.py           # 통신 채널 + 킬체인 프로세스
 │   ├── metrics.py         # 성능 지표 수집기
 │   └── threats.py         # 위협 생성기
-├── tests/                   # pytest 단위/통합 테스트 (57개)
-├── notebook1~4.ipynb      # Jupyter 분석 노트북
+│   └── viz.py             # 2D 전술 시각화 (matplotlib.animation)
+├── tests/                   # pytest 단위/통합 테스트 (9개 파일, 86개)
+├── notebook1~5.ipynb      # Jupyter 분석 노트북 (모델정의, 시나리오, 배치실험, 분석, 전술시각화)
 ├── CLAUDE.md              # Claude Code 세션 컨텍스트
 ├── README.md              # 프로젝트 개요 (이 파일)
 ├── CHANGELOG.md           # 버전 이력 + 문제점 + 개선 계획
@@ -164,7 +165,7 @@ for arch in ['linear', 'killweb']:
     print(f'{arch}: leaker={leaker:.1f}%, s2s={s2s:.1f}s, success={success:.1f}%')
 "
 
-# 전체 테스트 (57개)
+# 전체 테스트 (86개)
 python -m pytest tests/ -v
 ```
 
@@ -177,6 +178,6 @@ python -m pytest tests/ -v
 | v0.1 | 완료 | 핵심 시뮬레이션 엔진, 10개 지표, 시나리오 1·5 |
 | v0.2 | 완료 | 비행 프로파일 현실화 + 3D 경사거리 + 최적 교전 시점 |
 | v0.3 | 완료 | 시나리오 2~4 검증, EW 3단계, 테스트 45개, 코드 품질 리뷰 |
-| v0.4 | **완료** | 죽은 코드 정리, 다중 교전 모델링, 메트릭 12개, 테스트 57개 |
-| v0.5 | 계획 | COP 품질 차별화, 적응형 교전, 통신 동적 열화, 2D 전술 시각화 |
-| v0.6 | 계획 | Monte Carlo 300회 배치 실험, 최종 통계 분석 보고서 |
+| v0.4 | 완료 | 죽은 코드 정리, 다중 교전 모델링, 메트릭 12개, 테스트 57개 |
+| v0.5 | **완료** | COP 품질 차별화, 적응형 교전, 통신 동적 열화, 2D 전술 시각화, 테스트 86개 |
+| v0.6 | **진행 예정** | Monte Carlo 300회 배치 실험, 통계 분석 모듈, 최종 분석 보고서 |
