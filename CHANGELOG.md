@@ -5,6 +5,103 @@
 
 ---
 
+## [v0.5] — 2026-03-12
+
+### 변경사항
+
+#### COP 품질 차별화 (v0.5 핵심 기능)
+- `config.py`: `COP_CONFIG` 파라미터 추가
+  - `fusion_error_reduction=True`: Kill Web 센서 융합 √N 오차 감소
+  - `min_fused_error=0.1km`: 융합 오차 하한선
+  - `friendly_status_bonus=0.15`: 아군 상태 공유 시 사수 점수 보너스
+  - `fusion_pk_bonus_max=0.10`: 센서 융합 Pk 보너스 상한
+- `agents.py`: `C2NodeAgent`에 `friendly_status`, `engagement_plan` 필드 추가
+  - `update_friendly_status()`: Kill Web 전용 아군 사수 상태 갱신
+  - `update_engagement_plan()`: Kill Web 전용 교전 계획 공유
+  - `ShooterAgent.engage()`: `pk_bonus` 파라미터 추가 (센서 융합 보너스)
+- `model.py`: Kill Web COP 차별화 로직 구현
+  - `_fuse_tracks()`: 복수 센서 추적 시 √N 오차 감소
+  - `_update_friendly_status()`: 매 스텝 아군 상태 공유
+  - `_update_engagement_plan()`: 교전 계획 C2 노드 공유
+  - `_find_best_shooter()`: COP 아군 상태 기반 사수 선정 최적화
+
+#### 적응형 교전 정책
+- `config.py`: `ADAPTIVE_ENGAGEMENT` 파라미터 추가
+  - `ammo_threshold_ratio=0.3`: 탄약 30% 이하 시 단일 교전 전환
+  - `critical_ammo_ratio=0.1`: 탄약 10% 이하 시 고위협만 교전
+  - `critical_threat_types`: SRBM, CRUISE_MISSILE
+- `model.py`: `_get_adaptive_max_shooters()` — Kill Web 전용 적응형 교전 규모 결정
+
+#### 통신 네트워크 동적 열화
+- `config.py`: `COMM_DEGRADATION` 파라미터 추가
+  - `link_failure_threshold=0.8`: 재밍 0.8 이상 링크 두절
+  - `killweb_redundancy_factor=0.5`: Kill Web 메시 구조 열화 완화
+- `comms.py`: `CommChannel` 확장
+  - `get_link_latency()`: 링크별 차등 지연 계산
+  - `link_degradation`: 링크별 열화 상태 관리
+  - `is_message_delivered()`: 링크별 열화 반영 가능
+
+#### 2D 전술 시각화 모듈 (신규)
+- `modules/viz.py`: `TacticalVisualizer` 클래스
+  - `render_frame()`: 특정 시점 전술 상황도 렌더링
+  - `animate()`: 전체 시뮬레이션 리플레이 (GIF 저장 가능)
+  - `snapshot_comparison()`: 복수 아키텍처 나란히 비교
+  - `event_timeline()`: 킬체인 이벤트 타임라인 바 차트
+- `model.py`: `record_snapshots` 파라미터 + `_record_snapshot()` 메서드
+  - 매 스텝 에이전트 상태 기록 (시각화 모드 전용)
+
+#### 시각화 노트북
+- `notebook5_tactical_viz.ipynb` 신규
+  - 정적 스냅샷 4패널, 아키텍처 비교, 이벤트 타임라인, 전체 애니메이션, COP 분석
+
+#### 테스트 확장
+- `test_cop_differentiation.py` 신규 (11개 테스트)
+  - COP 설정 검증, 센서 융합, 아군 상태 공유
+- `test_adaptive_engagement.py` 신규 (13개 테스트)
+  - 적응형 교전, 통신 열화, 스냅샷 기능
+- `test_viz.py` 신규 (5개 테스트)
+  - 시각화 모듈 기본 동작 검증
+- 총 86개 테스트 전부 PASS (기존 57개 + 신규 29개)
+
+### 전 시나리오 성능 비교표 (v0.5, seed=42)
+
+| 시나리오 | 아키텍처 | 누출률% | 성공률% | S2S(s) | 다중교전% |
+|----------|----------|---------|---------|--------|-----------|
+| S1 포화공격 | Linear | 35.6 | 37.1 | 343.9 | 14.3 |
+| S1 포화공격 | **KillWeb** | **22.2** | **37.5** | **5.0** | **16.7** |
+| S2 복합위협 | Linear | 26.3 | 30.3 | 288.0 | 12.1 |
+| S2 복합위협 | **KillWeb** | **13.2** | **40.5** | **5.0** | 9.5 |
+| S3 EW Light | Linear | 26.3 | 42.4 | 336.9 | 18.2 |
+| S3 EW Light | **KillWeb** | **15.8** | 41.9 | **7.5** | 14.0 |
+| S3 EW Moderate | Linear | 34.2 | 40.7 | 512.8 | 18.5 |
+| S3 EW Moderate | **KillWeb** | **15.8** | **41.5** | **14.8** | 12.2 |
+| S3 EW Heavy | Linear | 39.5 | 21.7 | 588.5 | 4.3 |
+| S3 EW Heavy | **KillWeb** | **21.1** | **43.3** | **24.9** | 6.7 |
+| S4 순차교전 | Linear | 35.8 | 43.8 | 148.6 | 6.2 |
+| S4 순차교전 | **KillWeb** | **31.3** | 43.1 | **5.1** | **15.5** |
+| S5 노드파괴 | Linear | 22.2 | 42.9 | 113.5 | 16.7 |
+| S5 노드파괴 | **KillWeb** | 22.2 | 37.5 | **5.0** | 16.7 |
+
+**핵심 분석 (v0.4 → v0.5 변화)**:
+- Kill Web **전 시나리오 누출률 우위** 유지 (평균 20.2% vs 32.3%)
+- COP 차별화로 Kill Web S2 성공률 40.5% (v0.4: 41.9%) — 아군 상태 기반 사수 재할당
+- S3 EW Moderate: Kill Web 누출률 15.8% (v0.4: 15.8%) — 메시 다중경로 통신 내성 유지
+- 적응형 교전: S4 Kill Web 누출률 31.3% (v0.4: 32.8%) — 탄약 절약 효과
+- S5 노드파괴: 양쪽 동일 누출률 22.2% — v0.4와 동일 패턴 유지
+
+### 발견된 문제
+1. **한글 폰트 미지원** — matplotlib 시각화에서 한글 글리프 경고 (DejaVu Sans)
+   - 대안: 영문 라벨 사용 또는 한글 폰트 설치
+2. **스냅샷 메모리** — record_snapshots=True 시 300회 Monte Carlo 배치에서 메모리 증가 예상
+   - 시각화 전용 옵션이므로 배치 실험에서는 사용하지 않을 것
+
+### 개선 계획 (v0.6)
+1. **Monte Carlo 300회 배치 실험** — 전 시나리오 × 2 아키텍처 × 300 시드, 수렴 분석
+2. **인터랙티브 시각화 (선택)** — plotly/dash 기반 웹 대시보드
+3. **최종 분석 보고서** — 통계 검정, 효과 크기, 정책 제언 포함 종합 보고
+
+---
+
 ## [v0.4] — 2026-03-11
 
 ### 변경사항
