@@ -59,10 +59,14 @@ notebook1~5    — Jupyter 노트북 (모델정의, 시나리오, 배치실험, 
 - 한글 폰트 미지원 — matplotlib 시각화에서 한글 글리프 경고
 - 스냅샷 메모리 — record_snapshots=True 시 배치 실험에서 메모리 증가 가능
 
-## 다음 작업: v0.6
-1. **Monte Carlo 300회 배치 실험** — 전 시나리오 × 2 아키텍처 × 300 시드
-2. **인터랙티브 시각화** — plotly/dash 기반 웹 대시보드 (선택)
-3. **최종 분석 보고서** — 통계 검정, 효과 크기, 정책 제언 종합 보고
+## 다음 작업: v0.6 (Monte Carlo 통계 분석)
+1. **Monte Carlo 배치 실험 프레임워크** — 7 시나리오 × 2 아키텍처 × 300 시드 = 4,200회
+   - 수렴 분석, CSV 저장, multiprocessing 병렬화
+2. **통계 분석 모듈** (`modules/stats.py` 신규)
+   - 정규성 검정 (Shapiro-Wilk), 평균 비교 (Welch's t / Mann-Whitney U)
+   - 효과 크기 (Cohen's d), 95% 신뢰 구간, Bonferroni 다중 비교 보정
+3. **최종 분석 보고서** — 시나리오별 박스플롯/히트맵/레이더 차트, 정책 제언
+4. **인터랙티브 시각화 (선택)** — plotly/dash 기반 웹 대시보드
 
 ## 자주 쓰는 명령어
 ```bash
@@ -85,5 +89,5 @@ python -m pytest tests/ -v
 ## 이력 관리 파일
 - `README.md` — 프로젝트 목표, 개념, 아키텍처 청사진
 - `CHANGELOG.md` — 버전별 업데이트 이력 + 발견된 문제 + 개선 계획
-- `plan.md` — 현재 진행 중인 개선 작업의 상세 기술 계획 (현재: v0.5 완료)
+- `plan.md` — 현재 진행 중인 개선 작업의 상세 기술 계획 (현재: v0.6 계획 수립)
 - `dev_blueprint.md` — 초기 개발 청사진 (참조용, 동결)
