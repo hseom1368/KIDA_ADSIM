@@ -5,6 +5,46 @@
 
 ---
 
+## [v0.6b] — 2026-03-17
+
+### 변경사항
+
+#### Monte Carlo 배치 실험 프레임워크
+- `modules/batch.py` (신규): `BatchRunner` 클래스
+  - `multiprocessing.Pool` 기반 병렬 실행 (최대 8 워커)
+  - `run_pilot()`: 소규모 파일럿 실행 + 시간 추정
+  - `run_all()`: 전체 4,200회 병렬 배치 실행 + 체크포인팅
+  - `check_convergence()`: 누적 평균 기반 수렴성 검사
+  - `run_single()`: pickle 호환 워커 함수 (record_snapshots=False 강제)
+
+#### 통계 분석 모듈
+- `modules/stats.py` (신규): 아키텍처 비교 통계 분석
+  - `normality_test()`: Shapiro-Wilk 정규성 검정 (n>5000 skip)
+  - `compare_groups()`: 정규성에 따라 Welch's t-test / Mann-Whitney U 자동 선택
+  - `cohens_d()`: Cohen's d 효과 크기
+  - `confidence_interval()`: t-분포 기반 95% CI
+  - `bonferroni_correct()`: 다중비교 보정
+  - `full_comparison()`: 전 시나리오 × 메트릭 자동 통계 보고서 생성
+
+#### 노트북 업데이트
+- `notebook3`: `BatchRunner` 연동으로 순차 실행 → 병렬 실행 교체
+- `notebook4`: 인라인 통계 코드 → `stats.py` import, 레이더 차트 + 포레스트 플롯 추가
+
+#### 테스트 확장
+- 116개 → **136개** (신규 20개)
+- `tests/test_batch.py` (신규 6개): run_single, 파일럿, 수렴 검사, 체크포인트
+- `tests/test_stats.py` (신규 14개): 정규성, Cohen's d, CI, 비교, Bonferroni, full_comparison
+
+### 발견된 문제
+- 한글 폰트 미지원 경고 (기존, matplotlib)
+- 4,200회 전체 실행 시 멀티프로세싱 환경에서 메모리 사용량 모니터링 필요
+
+### 개선 계획
+- **v0.7**: 구조적 개선 (표적 분류, 방위각, KF-16, 영역 확대, THAAD 등)
+- **v0.8+**: 확장 체계 (AEW&C, Aegis, SBIRS, L-SAM)
+
+---
+
 ## [v0.6a] — 2026-03-17
 
 ### 변경사항

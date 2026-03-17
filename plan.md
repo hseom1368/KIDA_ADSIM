@@ -60,20 +60,18 @@
 
 ---
 
-## v0.6b: Monte Carlo 통계 분석 (다음 작업)
+## v0.6b: Monte Carlo 통계 분석 ✅ 완료
 
-기존 v0.6 계획을 교정된 파라미터(v0.6a) 기반으로 실행.
+> 완료일: 2026-03-17
+> 테스트: 136개 PASS (13개 파일)
 
-| # | 작업 | 파일 | 난이도 |
-|---|------|------|--------|
-| 1 | Monte Carlo 4,200회 배치 프레임워크 | model.py, notebook3 | 높음 |
-| 2 | 통계 분석 모듈 | modules/stats.py (신규) | 높음 |
-| 3 | 최종 분석 보고서 | notebook4/6 | 중간 |
-| 4 | 인터랙티브 시각화 (선택) | modules/dashboard.py | 낮음 |
-| 5 | 테스트 추가 (~10개) | tests/test_stats.py | 중간 |
-| 6 | 문서 업데이트 | CHANGELOG, CLAUDE.md | 낮음 |
-
-**목표 테스트**: 116개 → ~126개
+### 완료된 작업
+1. `modules/batch.py` 신규 ✅ — BatchRunner (multiprocessing 병렬화, 체크포인팅, 수렴 검사)
+2. `modules/stats.py` 신규 ✅ — 정규성 검정, t-test/Mann-Whitney, Cohen's d, Bonferroni, full_comparison
+3. notebook3 업데이트 ✅ — BatchRunner 연동, 파일럿→본실험→수렴 검사 파이프라인
+4. notebook4 업데이트 ✅ — stats.py 연동, 레이더 차트, 포레스트 플롯 추가
+5. 테스트 확장 ✅ — test_batch.py (6개), test_stats.py (14개) = 신규 20개
+6. 문서 업데이트 ✅ — CHANGELOG v0.6b, CLAUDE.md, plan.md 갱신
 
 ---
 

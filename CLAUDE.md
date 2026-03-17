@@ -15,7 +15,10 @@ modules/
   metrics.py   — 12개 성능 지표 수집기
   threats.py   — 위협 생성기 (5개 시나리오)
   viz.py       — 2D 전술 시각화 (matplotlib.animation 기반)
+  batch.py     — Monte Carlo 배치 실행기 (multiprocessing 병렬화, 체크포인팅)
+  stats.py     — 통계 분석 모듈 (정규성 검정, t-test/Mann-Whitney, Cohen's d, Bonferroni)
 notebook1~5    — Jupyter 노트북 (모델정의, 시나리오, 배치실험, 분석, 전술시각화)
+results/       — Monte Carlo 실험 결과 CSV + 분석 차트 (gitignore)
 ```
 
 ## 기술 스택
@@ -46,8 +49,15 @@ notebook1~5    — Jupyter 노트북 (모델정의, 시나리오, 배치실험, 
 
 > 참고: v0.6a에서 PAC-3 사거리 120→60km, 시나리오 1 파상 순서 변경(UAS 선행)으로 v0.5 대비 누출률 증가. S2 복합위협에서는 KillWeb 13.2% vs Linear 26.3%로 여전히 강한 이점.
 
-## 현재 버전: v0.6a (완료)
-**상태**: 검증 보고서 기반 파라미터 교정 + BIHO gun/missile 분리 + 116개 테스트
+## 현재 버전: v0.6b (완료)
+**상태**: Monte Carlo 배치 프레임워크 + 통계 분석 모듈 + 136개 테스트
+
+## v0.6b에서 구현된 핵심 사항
+1. **Monte Carlo 배치 실행기** — `modules/batch.py`, multiprocessing 병렬화, 4,200회 실행 지원
+2. **통계 분석 모듈** — `modules/stats.py`, Shapiro-Wilk/t-test/Mann-Whitney/Cohen's d/Bonferroni
+3. **notebook3 업데이트** — BatchRunner 연동, 수렴성 검사
+4. **notebook4 업데이트** — stats.py 연동, 레이더 차트, 포레스트 플롯 추가
+5. **테스트 확장** — 13개 파일, 136개 테스트 (신규 20개: test_batch 6, test_stats 14)
 
 ## v0.6a에서 구현/수정된 핵심 사항
 1. **PAC-3 MSE 교정** — max_range 120→60km, max_altitude 30→40km, ammo 16→12, engagement_time 5→9s
@@ -57,10 +67,11 @@ notebook1~5    — Jupyter 노트북 (모델정의, 시나리오, 배치실험, 
 5. **시나리오 1 파상 변경** — UAS→CM→SRBM (러-우 전쟁 교리)
 6. **테스트 확장** — 11개 파일, 116개 테스트 (신규 30개)
 
-## 알려진 문제 (v0.6a)
+## 알려진 문제 (v0.6b)
 - 한글 폰트 미지원 — matplotlib 시각화에서 한글 글리프 경고
-- 스냅샷 메모리 — record_snapshots=True 시 배치 실험에서 메모리 증가 가능
+- 스냅샷 메모리 — record_snapshots=True 시 배치 실험에서 메모리 증가 가능 (batch.py에서 자동 비활성화)
 - S1 누출률 증가 — PAC-3 사거리 축소 + 파상 변경 효과, v0.7 구조 개선으로 보완 예정
+- 4,200회 전체 실행 시 멀티프로세싱 메모리 사용량 모니터링 필요
 
 ## 검증 보고서 기반 로드맵
 근거: `KIDA_ADSIM_Unified_Validation_v2.docx` (15개 검증 영역, 13개 우선순위)
@@ -68,18 +79,21 @@ notebook1~5    — Jupyter 노트북 (모델정의, 시나리오, 배치실험, 
 | 버전 | 범위 | 핵심 항목 |
 |------|------|-----------|
 | **v0.6a** ✅ | 파라미터 교정 | PAC-3/천궁/BIHO 교정, MCRC 재배치, 파상 변경 |
-| **v0.6b** (다음) | Monte Carlo + 통계 | 4,200회 배치, stats.py, 분석 보고서 |
+| **v0.6b** ✅ | Monte Carlo + 통계 | batch.py, stats.py, 레이더/포레스트 차트, 136개 테스트 |
 | v0.7 | 구조적 개선 | 표적분류, 방위각, KF-16, 영역확대, THAAD, 시간스텝 |
 | v0.8+ | 확장 체계 | AEW&C, Aegis, SBIRS, L-SAM |
 
-## 다음 작업: v0.6b (Monte Carlo 통계 분석)
-1. **Monte Carlo 배치 실험 프레임워크** — 7 시나리오 × 2 아키텍처 × 300 시드 = 4,200회
-   - 수렴 분석, CSV 저장, multiprocessing 병렬화
-2. **통계 분석 모듈** (`modules/stats.py` 신규)
-   - 정규성 검정 (Shapiro-Wilk), 평균 비교 (Welch's t / Mann-Whitney U)
-   - 효과 크기 (Cohen's d), 95% 신뢰 구간, Bonferroni 다중 비교 보정
-3. **최종 분석 보고서** — 시나리오별 박스플롯/히트맵/레이더 차트, 정책 제언
-4. **인터랙티브 시각화 (선택)** — plotly/dash 기반 웹 대시보드
+## 다음 작업: v0.7 (구조적 개선)
+1. **표적 분류 + KN-25 오분류 모델** — agents.py, config.py, model.py
+2. **레이더 방위각 제약** — MPQ-65: 90°, Green Pine: 120°
+3. **KF-16 동적 CAP 궤도** — 고정 위치 → 순회 궤도 모델
+4. **시뮬레이션 영역 확대** — 200×200 → 800×600km
+5. **레이더 수평선** — 4/3 지구 모델
+6. **이중 시간 스텝** — 5s 일반 + 0.5s BMD
+7. **교전 교리 확장** — 2발 salvo, S-L-S, 재장전
+8. **BMD 사전 위임** — 선형 C2에서 SRBM 직접 교전 허용
+9. **THAAD 체계 추가**
+10. **시나리오 5b** — 동시 다중 노드 파괴
 
 ## 자주 쓰는 명령어
 ```bash
