@@ -5,6 +5,66 @@
 
 ---
 
+## [v0.6a] — 2026-03-17
+
+### 변경사항
+
+#### 파라미터 교정 (검증 보고서 Unified Validation v2 기반)
+
+근거 문서: `KIDA_ADSIM_Unified_Validation_v2.docx` — 15개 검증 영역, 13개 우선순위 항목 중 #5, #6, #7 반영.
+
+- `config.py`: PAC-3 MSE 파라미터 교정
+  - `max_range`: 120 → **60** km (TBM 교전 사거리. CRI max 120km은 합산치)
+  - `max_altitude`: 30 → **40** km (MDA TBM 사양)
+  - `ammo_count`: 16 → **12** (M903 MSE 캐니스터. CRI=16)
+  - `engagement_time`: 5 → **9** s (hit-to-kill 교전 사이클)
+- `config.py`: 천궁-II `max_range` 40 → **45** km (Block II 40-50km 중간값)
+- `config.py`: BIHO 무기체계 gun/missile 분리
+  - `gun_range=3` km (30mm 유효), `missile_range=7` km (신궁)
+  - `gun_ammo=600`, `missile_ammo=2` (총 602)
+  - `pk_table_gun`, `pk_table_missile` 별도 Pk 테이블
+- `agents.py`: `ShooterAgent` BIHO 이중 모드 교전 로직
+  - `_get_biho_mode()`: 거리 기반 gun/missile 자동 선택
+  - `can_engage()`, `compute_pk()`, `engage()`: 모드별 분기 처리
+  - gun/missile 탄약 독립 추적
+
+#### 배치 및 시나리오 교정
+- `config.py`: MCRC 재배치 `(100,140)` → `(100,50)` (사수 후방, C2 교리 반영)
+- `config.py`: 시나리오 1 파상 순서 변경
+  - 기존: SRBM+CM 선행 → UAS 후행
+  - 교정: **UAS(t=0) → CM(t=20) → SRBM(t=40)** (러-우 전쟁 교리: 저가 UAS로 요격탄 소모)
+  - 총 위협 45기 (UAS 20 + CM 10 + SRBM 15)
+
+#### 테스트 확장
+- 86개 → **116개** (신규 30개)
+- `tests/test_param_corrections.py` (신규 15개): PAC-3/천궁/MCRC/시나리오 교정값 검증
+- `tests/test_biho_split.py` (신규 15개): BIHO gun/missile 분리 로직 검증
+- `tests/test_adaptive_engagement.py`: critical_mode 테스트 수정 (BIHO 탄약 변경 반영)
+
+### v0.6a 성능 기준선 (seed=42) vs v0.5
+
+| 시나리오 | 아키텍처 | v0.5 누출률 | v0.6a 누출률 | 변화 |
+|----------|----------|-------------|--------------|------|
+| S1 포화공격 | Linear | 35.6% | 37.8% | +2.2pp |
+| S1 포화공격 | KillWeb | 22.2% | 35.6% | +13.4pp |
+| S2 복합위협 | Linear | 26.3% | 26.3% | 0 |
+| S2 복합위협 | KillWeb | 13.2% | 13.2% | 0 |
+| S4 순차교전 | Linear | 35.8% | 52.2% | +16.4pp |
+| S4 순차교전 | KillWeb | 31.3% | 38.8% | +7.5pp |
+
+**분석**: S1의 누출률 증가는 (1) PAC-3 사거리 절반 축소 + (2) 시나리오 1 파상 순서 변경(UAS 선행으로 요격탄 소모)의 복합 효과. S2는 파상 미변경으로 동일. S4는 PAC-3 사거리 축소의 순수 효과.
+
+### 발견된 문제
+- 한글 폰트 미지원 경고 (기존 v0.5와 동일)
+- PAC-3 사거리 축소로 S1/S4 누출률 증가 — v0.7 구조 개선(방위각, 다중 체계)으로 현실적 방어 가능
+
+### 개선 계획
+- **v0.6b**: Monte Carlo 4,200회 + 통계 분석 (교정된 파라미터 기반)
+- **v0.7**: 구조적 개선 (표적 분류, 방위각, KF-16, 영역 확대, THAAD 등)
+- **v0.8+**: 확장 체계 (AEW&C, Aegis, SBIRS, L-SAM)
+
+---
+
 ## [v0.5] — 2026-03-12
 
 ### 변경사항

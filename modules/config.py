@@ -155,23 +155,23 @@ C2_PARAMS = {
 SHOOTER_PARAMS = {
     "PATRIOT_PAC3": {
         "weapon_type": "PATRIOT_PAC3",
-        "max_range": 120,           # km
+        "max_range": 60,            # km (v0.6a: 120→60, TBM 교전 사거리)
         "min_range": 3,             # km
-        "max_altitude": 30,         # km
+        "max_altitude": 40,         # km (v0.6a: 30→40, MDA TBM 사양)
         "pk_table": {
             "SRBM": 0.85,
             "CRUISE_MISSILE": 0.80,
             "AIRCRAFT": 0.90,
             "UAS": 0.70,
         },
-        "ammo_count": 16,
+        "ammo_count": 12,           # (v0.6a: 16→12, M903 MSE 캐니스터)
         "reload_time": 1800,        # 초
-        "engagement_time": 5,       # 초
+        "engagement_time": 9,       # 초 (v0.6a: 5→9, hit-to-kill 교전 사이클)
         "label": "PATRIOT PAC-3 MSE",
     },
     "CHEONGUNG2": {
         "weapon_type": "CHEONGUNG2",
-        "max_range": 40,
+        "max_range": 45,            # km (v0.6a: 40→45, Block II 40-50km 중간값)
         "min_range": 1,
         "max_altitude": 20,
         "pk_table": {
@@ -187,16 +187,34 @@ SHOOTER_PARAMS = {
     },
     "BIHO": {
         "weapon_type": "BIHO",
-        "max_range": 7,
+        # v0.6a: gun/missile 분리 — max_range는 missile 기준 (하위호환)
+        "max_range": 7,             # km (신궁 미사일 사거리, 하위호환 유지)
+        "gun_range": 3,             # km (v0.6a: 30mm 유효 사거리)
+        "missile_range": 7,         # km (v0.6a: 신궁 최대 사거리)
+        "missile_max_altitude": 3.5,  # km (v0.6a: 신궁 최대 고도)
         "min_range": 0.5,
-        "max_altitude": 3,
-        "pk_table": {
+        "max_altitude": 3.5,        # km (v0.6a: 3→3.5, 신궁 사양)
+        "pk_table": {               # 하위호환: 기존 단일 Pk 테이블
             "SRBM": 0.0,
             "CRUISE_MISSILE": 0.30,
             "AIRCRAFT": 0.50,
             "UAS": 0.60,
         },
-        "ammo_count": 502,          # 500(기관포) + 2(미사일)
+        "pk_table_gun": {           # v0.6a: 30mm 기관포 전용 Pk
+            "SRBM": 0.0,
+            "CRUISE_MISSILE": 0.15,
+            "AIRCRAFT": 0.30,
+            "UAS": 0.50,
+        },
+        "pk_table_missile": {       # v0.6a: 신궁 미사일 전용 Pk
+            "SRBM": 0.0,
+            "CRUISE_MISSILE": 0.40,
+            "AIRCRAFT": 0.60,
+            "UAS": 0.65,
+        },
+        "ammo_count": 602,          # (v0.6a: 총합 = gun 600 + missile 2)
+        "gun_ammo": 600,            # v0.6a: 쌍열 30mm 600발
+        "missile_ammo": 2,          # v0.6a: 신궁 2발
         "reload_time": 5,
         "engagement_time": 3,
         "label": "비호 복합",
@@ -406,11 +424,12 @@ COMM_PARAMS = {
 SCENARIO_PARAMS = {
     "scenario_1_saturation": {
         "name": "포화공격",
-        "description": "20-40 위협, 2-3 파상 공격",
+        # v0.6a: UAS 선행→CM 중간→SRBM 최후 (러-우 교리 반영, 거의 동시 도달 모델)
+        "description": "45 위협, 3파상: UAS→CM→SRBM 순 (압축 도달)",
         "waves": [
-            {"time": 0, "threats": {"SRBM": 10, "CRUISE_MISSILE": 5}},
-            {"time": 60, "threats": {"SRBM": 5, "UAS": 10}},
-            {"time": 120, "threats": {"CRUISE_MISSILE": 5, "UAS": 10}},
+            {"time": 0, "threats": {"UAS": 20}},
+            {"time": 20, "threats": {"CRUISE_MISSILE": 10}},
+            {"time": 40, "threats": {"SRBM": 15}},
         ],
         "approach_azimuth": (240, 360),     # 북쪽 120도 부채꼴
         "approach_distance": 200,            # km
@@ -519,12 +538,14 @@ DEFAULT_DEPLOYMENT = {
     ],
     "c2_nodes": {
         "linear": [
-            {"type": "MCRC", "id": "MCRC", "pos": (100, 140)},
+            # v0.6a: MCRC (100,140)→(100,50) 사수 후방 재배치
+            {"type": "MCRC", "id": "MCRC", "pos": (100, 50)},
             {"type": "BATTALION_TOC", "id": "TOC_PAT", "pos": (80, 120)},
             {"type": "BATTALION_TOC", "id": "TOC_MSAM", "pos": (120, 110)},
         ],
         "killweb": [
-            {"type": "MCRC", "id": "MCRC", "pos": (100, 140)},
+            # v0.6a: MCRC (100,140)→(100,50) 사수 후방 재배치
+            {"type": "MCRC", "id": "MCRC", "pos": (100, 50)},
             {"type": "EOC", "id": "EOC_1", "pos": (90, 130)},
             {"type": "EOC", "id": "EOC_2", "pos": (110, 120)},
         ],

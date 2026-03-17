@@ -187,13 +187,57 @@ class ShooterAgent(Agent):
         self.shots_fired = 0
         self.label = params["label"]
 
+        # v0.6a: BIHO gun/missile 분리
+        self._has_dual_mode = "gun_range" in params
+        if self._has_dual_mode:
+            self.gun_range = params["gun_range"]
+            self.missile_range = params["missile_range"]
+            self.gun_ammo = params["gun_ammo"]
+            self.missile_ammo = params["missile_ammo"]
+            self.initial_gun_ammo = params["gun_ammo"]
+            self.initial_missile_ammo = params["missile_ammo"]
+            self.pk_table_gun = dict(params.get("pk_table_gun", params["pk_table"]))
+            self.pk_table_missile = dict(params.get("pk_table_missile", params["pk_table"]))
+
+    def _get_biho_mode(self, threat):
+        """v0.6a: BIHO gun/missile 모드 결정. 거리 기반 자동 선택."""
+        if not self._has_dual_mode:
+            return None
+        d = _slant_range(self.pos, 0, threat.pos, threat.altitude)
+        # gun 사거리 이내 + gun 탄약 있으면 gun 모드
+        if d <= self.gun_range and self.gun_ammo > 0:
+            return "gun"
+        # missile 사거리 이내 + missile 탄약 있으면 missile 모드
+        if d <= self.missile_range and self.missile_ammo > 0:
+            return "missile"
+        return None
+
     def can_engage(self, threat, pk_threshold=0.1):
         """교전 가능 여부 (사거리, 탄약, 상태, 고도, 최소 Pk)"""
         if not self.is_operational or self.is_engaged:
             return False
         if self.ammo_count <= 0:
             return False
+
         d = _slant_range(self.pos, 0, threat.pos, threat.altitude)
+
+        # v0.6a: BIHO 이중 모드 처리
+        if self._has_dual_mode:
+            mode = self._get_biho_mode(threat)
+            if mode is None:
+                return False
+            pk_tbl = self.pk_table_gun if mode == "gun" else self.pk_table_missile
+            mode_range = self.gun_range if mode == "gun" else self.missile_range
+            base_pk = pk_tbl.get(threat.threat_type, 0)
+            if base_pk <= 0:
+                return False
+            if threat.altitude > self.max_altitude:
+                return False
+            range_factor = max(0.0, 1.0 - (d / mode_range) ** 2)
+            if base_pk * range_factor < pk_threshold:
+                return False
+            return True
+
         effective_max = self.max_range * ENGAGEMENT_POLICY["effective_range_ratio"]
         if d < self.min_range or d > effective_max:
             return False
@@ -210,11 +254,27 @@ class ShooterAgent(Agent):
 
     def compute_pk(self, threat, jamming_level=0.0):
         """위협 유형별 Pk 계산 (거리, 기동, 재밍 보정)"""
+        d = _slant_range(self.pos, 0, threat.pos, threat.altitude)
+
+        # v0.6a: BIHO 이중 모드 Pk 계산
+        if self._has_dual_mode:
+            mode = self._get_biho_mode(threat)
+            if mode is None:
+                return 0.0
+            pk_tbl = self.pk_table_gun if mode == "gun" else self.pk_table_missile
+            mode_range = self.gun_range if mode == "gun" else self.missile_range
+            base_pk = pk_tbl.get(threat.threat_type, 0)
+            if base_pk <= 0:
+                return 0.0
+            range_factor = max(0.0, 1.0 - (d / mode_range) ** 2)
+            maneuver_penalty = 0.85 if threat.maneuvering else 1.0
+            jamming_penalty = 1.0 - (jamming_level * ENGAGEMENT_POLICY["jamming_pk_penalty"])
+            return base_pk * range_factor * maneuver_penalty * jamming_penalty
+
         base_pk = self.pk_table.get(threat.threat_type, 0)
         if base_pk <= 0:
             return 0.0
 
-        d = _slant_range(self.pos, 0, threat.pos, threat.altitude)
         range_factor = max(0.0, 1.0 - (d / self.max_range) ** 2)
         maneuver_penalty = 0.85 if threat.maneuvering else 1.0
         jamming_penalty = 1.0 - (jamming_level * ENGAGEMENT_POLICY["jamming_pk_penalty"])
@@ -227,7 +287,18 @@ class ShooterAgent(Agent):
             return False
 
         final_pk = min(1.0, self.compute_pk(threat, jamming_level) + pk_bonus)
-        self.ammo_count -= 1
+
+        # v0.6a: BIHO 이중 모드 탄약 소모
+        if self._has_dual_mode:
+            mode = self._get_biho_mode(threat)
+            if mode == "gun":
+                self.gun_ammo -= 1
+            elif mode == "missile":
+                self.missile_ammo -= 1
+            self.ammo_count = self.gun_ammo + self.missile_ammo
+        else:
+            self.ammo_count -= 1
+
         self.shots_fired += 1
         self.is_engaged = True
         self.engagement_end_time = self.model.sim_time + self.engagement_time

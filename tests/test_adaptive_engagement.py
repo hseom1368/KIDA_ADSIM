@@ -45,9 +45,9 @@ class TestAdaptivePolicy:
         """탄약 10% 이하 시 고위협만 교전"""
         m = AirDefenseModel(architecture="killweb",
                             scenario="scenario_1_saturation", seed=42)
-        # 모든 사수 탄약을 10% 이하로 설정
+        # 모든 사수 탄약을 1발로 설정 (확실히 10% 이하)
         for sh in m.shooter_agents:
-            sh.ammo_count = max(1, int(sh.initial_ammo * 0.05))
+            sh.ammo_count = 1
 
         from modules.agents import ThreatAgent
         # SRBM은 교전 가능 (고위협)
