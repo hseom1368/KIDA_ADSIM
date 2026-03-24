@@ -5,6 +5,76 @@
 
 ---
 
+## [v0.5.1] — 2026-03-23
+
+### 변경사항
+
+#### Pydantic 도메인 온톨로지 (신규 모듈)
+- `modules/ontology.py` 신규 (157행)
+  - `SensorType`, `C2Type`, `ShooterType`, `ThreatType` — 4개 엔티티 타입 모델
+  - `DetectionCapability`, `C2Capability`, `EngagementCapability`, `ThreatCapability` — 능력 모델
+  - `FlightPhase`, `FlightProfile` — 비행 프로파일 스키마
+  - `WaveSpec`, `ScenarioSchema` — 시나리오 구조 검증
+  - 토폴로지 관계 필드 내장 (`reporting_c2_type`, `parent_c2_type`, `controlling_c2_type`)
+
+#### 엔티티 레지스트리 (신규 모듈)
+- `modules/registry.py` 신규 (182행)
+  - `load_from_config()`: config.py 딕셔너리 → Pydantic 온톨로지 자동 변환
+  - `get_prioritized_shooters(threat_type_id)`: Pk 기반 사수 우선순위 정렬
+  - `get_sensors_for_c2()`, `get_shooters_for_c2()`, `get_child_c2_types()`: 토폴로지 역조회
+  - `TOPOLOGY_RELATIONS` (config.py 추가): sensor_to_c2, c2_hierarchy, shooter_to_c2 매핑
+
+#### Strategy 패턴 (신규 모듈)
+- `modules/strategies.py` 신규 (420행)
+  - `ArchitectureStrategy` ABC — 9개 추상 메서드 정의
+  - `LinearC2Strategy` — 계층형 킬체인, Pk 우선 사수 선택, 고정 교전 정책
+  - `KillWebStrategy` — COP 융합 킬체인, 가중 점수 사수 선택, 적응형 교전
+  - model.py의 **11개 인라인 if/else 아키텍처 분기를 전략 위임으로 교체**
+
+#### CZML 내보내기 (신규 모듈)
+- `modules/exporters.py` 신규 (270행)
+  - `CZMLExporter` 클래스 — 시뮬레이션 스냅샷 → CZML 형식 변환
+  - 한반도 중심 좌표 기준 (127.0°E, 37.0°N) 변환
+  - 위협 궤적, 센서/사수 커버리지, C2 노드, 방어 목표 패킷 생성
+  - Cesium.js 3D 시각화 연동 가능
+
+#### model.py 리팩토링
+- Registry → Strategy → Agent → Topology → Comm 초기화 순서 확립
+- `self.strategy.method()` 위임으로 아키텍처 분기 코드 제거
+- 시뮬레이션 로직 변경 없이 구조적 개선 달성
+
+#### comms.py 개선
+- `architecture` 문자열 직접 의존 제거
+- `redundancy_factor` 수치 파라미터 주입 방식으로 전환
+
+#### config.py 확장
+- `TOPOLOGY_RELATIONS` 딕셔너리 추가
+  - `sensor_to_c2`: EWR→MCRC, PATRIOT_RADAR→TOC_PAT 등
+  - `c2_hierarchy`: TOC_PAT→MCRC, TOC_MSAM→MCRC 등
+  - `shooter_to_c2`: PATRIOT_PAC3→TOC_PAT 등
+
+#### 테스트 확장 (60개 신규)
+- `test_ontology.py` 신규 (20+개) — 4개 엔티티 타입 검증, 필드 제약, 능력 모델
+- `test_registry.py` 신규 — config 로드, Pk 우선순위, 토폴로지 역조회
+- `test_strategies.py` 신규 — 선형/킬웹 전략 동작, 모델 통합
+- `test_exporters.py` 신규 — CZML 패킷 생성, 궤적 변환, 센서/사수 렌더링
+- 총 **146개 테스트** 전부 PASS (기존 86개 + 신규 60개, 13개 파일)
+
+### 성능 검증 (v0.5.1 = v0.5 동일)
+- 시나리오 1 seed=42 기준선 완전 일치 확인
+- 리팩토링으로 인한 성능 변화 **0%** (순수 구조 개선)
+
+### 발견된 문제
+1. **한글 폰트 미지원** — matplotlib 시각화에서 한글 글리프 경고 (기존 이슈 유지)
+2. **스냅샷 메모리** — record_snapshots=True 시 배치 실험 메모리 증가 가능 (기존 이슈 유지)
+3. **agents.py 온톨로지 DI 미완료** — 현재 config.py 딕셔너리 직접 참조 유지
+   - 향후 Phase 5에서 에이전트 생성자에 온톨로지 타입 주입 예정
+
+### 개선 계획 (v0.6)
+- v0.5 동일 — Monte Carlo 통계 분석 프레임워크
+
+---
+
 ## [v0.5] — 2026-03-12
 
 ### 변경사항

@@ -1,7 +1,7 @@
 # v0.6 상세 구현 계획
 
-> 작성일: 2026-03-12
-> 기반: v0.5 (86개 테스트 PASS, COP 차별화 + 적응형 교전 + 통신 열화 + 2D 시각화 완료)
+> 작성일: 2026-03-12 (v0.5.1 기준 갱신: 2026-03-24)
+> 기반: v0.5.1 (146개 테스트 PASS, Pydantic 온톨로지 + Strategy 패턴 + Registry + CZML 내보내기 완료)
 
 ---
 
@@ -294,7 +294,7 @@ class TestBatchExperiment:
     def test_reproducibility_with_same_seeds(self):
 ```
 
-### 테스트 목표: 기존 86개 + 신규 ~10개 = **~96개**
+### 테스트 목표: 기존 146개 + 신규 ~10개 = **~156개**
 
 ---
 
@@ -318,8 +318,27 @@ class TestBatchExperiment:
 - [ ] 작업 2 후: `MonteCarloAnalyzer.compare_architectures()` 정상 동작
 - [ ] 작업 2 후: Cohen's d, 95% CI, p-value 계산 검증
 - [ ] 작업 3 후: 전 시나리오 보고서 시각화 정상 렌더링
-- [ ] 작업 5 후: `python -m pytest tests/ -v` → ~96개 PASS
+- [ ] 작업 5 후: `python -m pytest tests/ -v` → ~156개 PASS
 - [ ] 최종: 4,200회 전체 배치 실행 완료 + 결과 보고서 생성
+
+---
+
+## v0.5.1 완료 기록 (온톨로지 리팩토링)
+
+> 작업 완료일: 2026-03-23
+> 테스트: 146개 전부 PASS (13개 파일)
+
+### 완료된 작업 (v0.5.1)
+1. Pydantic 도메인 온톨로지 ✅ — `ontology.py` (SensorType/C2Type/ShooterType/ThreatType + 능력 모델)
+2. 엔티티 레지스트리 ✅ — `registry.py` (config→온톨로지 변환, Pk 우선순위, 토폴로지 역조회)
+3. Strategy 패턴 ✅ — `strategies.py` (LinearC2Strategy/KillWebStrategy, 11개 if/else 분기 제거)
+4. model.py 리팩토링 ✅ — Registry→Strategy→Agent→Topology→Comm 초기화 순서
+5. comms.py 개선 ✅ — architecture 문자열 → redundancy_factor 수치 주입
+6. CZML 내보내기 ✅ — `exporters.py` (Cesium 3D 시각화 변환)
+7. 테스트 확장 ✅ — 86개 → 146개 (신규 60개, 4개 테스트 파일 추가)
+
+### 성능 검증 (v0.5.1 = v0.5 동일)
+- 시나리오 1 seed=42 기준선 완전 일치 (순수 구조 리팩토링, 성능 변화 0%)
 
 ---
 

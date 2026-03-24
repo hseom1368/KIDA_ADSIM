@@ -558,3 +558,25 @@ EXPERIMENT_CONFIG = {
     ],
     "checkpoint_interval": 50,      # 50회마다 중간 저장
 }
+
+# =============================================================================
+# 10. 토폴로지 관계 매핑 (선형 C2 계층 구조)
+# =============================================================================
+TOPOLOGY_RELATIONS = {
+    "sensor_to_c2": {
+        "EWR": "MCRC",
+        "PATRIOT_RADAR": "TOC_PAT",
+        "MSAM_MFR": "TOC_MSAM",
+        "SHORAD_RADAR": "TOC_SHORAD",      # fallback: TOC_MSAM
+    },
+    "shooter_to_c2": {
+        "PATRIOT_PAC3": "TOC_PAT",
+        "CHEONGUNG2": "TOC_MSAM",
+        "BIHO": "TOC_SHORAD",              # fallback: TOC_MSAM
+        "KF16": "MCRC",
+    },
+    "c2_hierarchy": {
+        "BATTALION_TOC": "MCRC",
+        "EOC": None,                        # Kill Web에서는 계층 없음
+    },
+}

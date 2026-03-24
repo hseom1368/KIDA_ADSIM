@@ -1,0 +1,165 @@
+제시해주신 KIDA_ADSIM 프로젝트의 「ontology 적용 방안.txt」와 기존 `model.py`, `agents.py` 코드를 시니어 개발자의 관점에서 심층 검토했습니다. 
+
+전반적으로 방대한 OWL/RDF 기반의 무거운 온톨로지 대신, **Pydantic + Strategy + Registry 패턴을 결합한 "경량 도메인 온톨로지(Lightweight Domain Ontology)" 구조를 채택한 것은 매우 현실적이고 훌륭한 엔지니어링 판단**입니다. 기존 코드의 `model.py`에 산재된 `if architecture == "killweb"` 분기(약 9곳 이상)를 객체지향의 다형성으로 풀어내고, 딕셔너리에 의존하던 구성 요소를 타입 세이프(Type-safe)하게 만드는 핵심 목표를 잘 조준하고 있습니다.
+
+다만, 실제 리팩토링 과정에서 병목이 될 수 있거나 온톨로지의 유연성을 100% 끌어내기 위해 **보완이 필요한 4가지 아키텍처적 이슈**를 제안합니다.
+
+---
+
+### 1. 에이전트 계층(agents.py)과 온톨로지 모델의 결합 방식 누락
+**[현황 분석]**
+계획서의 Phase 1, 2에서는 온톨로지 타입(`SensorType` 등)과 이를 관리하는 레지스트리(`EntityRegistry`)를 잘 정의했습니다. 하지만 기존 `agents.py`의 `SensorAgent` 등은 `__init__`에서 `SENSOR_PARAMS[sensor_type]`처럼 딕셔너리를 직접 파싱하여 초기화하고 있습니다. 계획서에는 이 에이전트들이 새로 만든 Pydantic 온톨로지 모델을 어떻게 사용할지 구체적인 연결 고리가 빠져 있습니다.
+
+**[보완 제안]**
+에이전트가 딕셔너리를 직접 참조하는 대신, 생성 시점에 **온톨로지 인스턴스를 주입(Dependency Injection)** 받도록 변경해야 합니다.
+```python
+# agents.py 개선안
+class SensorAgent(Agent):
+    def __init__(self, model, agent_id, pos, ontology_type: SensorType):
+        super().__init__(model)
+        self.agent_id = agent_id
+        self.pos = pos
+        # Pydantic 모델의 속성을 에이전트의 런타임 속성으로 매핑 (성능 최적화)
+        self.detection_range = ontology_type.capability.detection_range
+        self.scan_rate = ontology_type.capability.scan_rate
+        # ...
+```
+이렇게 하면 `config.py` → `Registry(Pydantic)` → `model.py(에이전트 생성)` → `agents.py`로 이어지는 데이터 흐름이 단방향으로 깔끔하게 정리됩니다.
+
+### 2. '능력(Capability) 컴포지션'의 경직성 (다중 능력 엔티티 지원 여부)
+**[현황 분석]**
+Phase 1의 설계를 보면 `SensorType`은 `DetectionCapability`를, `ShooterType`은 `EngagementCapability`를 각각 하드코딩된 속성으로 가집니다. 또한 `category: Literal["sensor"]`로 단일 역할만 부여하고 있습니다. 
+만약 향후 이지스함(Aegis)이나 F-35처럼 **"센서인 동시에 사수이고, C2 역할도 겸하는" 다목적 하이브리드 노드**를 추가해야 한다면 현재의 상속 체계는 다시 한계에 부딪힙니다.
+
+**[보완 제안]**
+진정한 온톨로지 기반의 능력 컴포지션(Composition)을 구현하려면, 엔티티 타입을 고정된 카테고리로 묶기보다 **능력들의 집합(List of Capabilities)**으로 정의하는 Entity-Component 구조를 차용하는 것이 좋습니다.
+```python
+# ontology.py 개선안
+class EntityType(BaseModel):
+    type_id: str
+    label: str
+    capabilities: List[Union[DetectionCapability, EngagementCapability, C2Capability]] = Field(default_factory=list)
+
+    def has_capability(self, cap_type: Type) -> bool:
+        return any(isinstance(c, cap_type) for c in self.capabilities)
+```
+이렇게 하면 `model.py`에서 레지스트리를 조회할 때, "사수 카테고리를 가져와라"가 아니라 **"EngagementCapability를 가진 모든 엔티티를 가져와라"** 형태의 진정한 온톨로지 추론(Capability-based Reasoning)이 가능해집니다.
+
+### 3. SimPy와 Strategy 패턴 통합 시의 컨텍스트(State) 관리 리스크
+**[현황 분석]**
+Phase 3에서 `ArchitectureStrategy`를 도입하여 `model.py`의 분기를 제거하는 아이디어는 완벽합니다. 하지만 기존 `model.py`의 킬체인 프로세스(`_killchain_process`)는 `yield self.simpy_env.timeout(delay)`를 사용하는 SimPy 제너레이터(Generator) 함수입니다.
+
+**[보완 제안]**
+전략(Strategy) 객체는 본질적으로 **상태를 가지지 않는(Stateless)** 순수 로직이어야 합니다. `process_killchain` 메서드가 `simpy_env`, `comm_channel`, `c2_resources` 등의 시뮬레이션 상태에 강하게 결합되어야 하므로, 전략 객체의 메서드 시그니처 설계 시 상태 참조를 어떻게 넘길지 명확히 해야 합니다.
+전략 객체가 Model 인스턴스 전체를 받게 하거나, 필요한 자원만 컨텍스트 객체로 묶어서 전달하는 파라미터 캡슐화가 필요합니다.
+```python
+# strategies.py 개선안
+@abstractmethod
+def process_killchain(self, context: KillChainContext, threat: ThreatAgent) -> Generator:
+    # context 안에서 env, topology, metrics 등을 뽑아 씀
+    pass
+```
+
+### 4. 시뮬레이션 루프 내 Pydantic 런타임 오버헤드 통제
+**[현황 분석]**
+계획서의 리스크 평가에 "성능 오버헤드 낮음 (초기화 시에만 검증)"이라고 잘 명시되어 있습니다. KIDA_ADSIM처럼 M&S 특성상 `step()`이 수만 번 호출되는 환경에서는 매우 중요한 포인트입니다.
+
+**[보완 제안]**
+개발 원칙(팀 컨벤션)으로 **"런타임 루프(model.step, agent.step) 안에서는 절대 Pydantic 객체를 새로 인스턴스화하거나 .model_validate()를 호출하지 않는다"**는 규칙을 `CLAUDE.md`나 개발 가이드에 명시해야 합니다.
+데이터를 검증하고 Pydantic 객체를 만드는 것은 초기 `Registry.load_from_config()`에서만 끝나야 하고, 시뮬레이션 중 동적으로 생성되는 교전 이벤트나 항적(Track) 정보는 기존처럼 가벼운 `dict`나 `dataclass`를 유지하는 현재의 판단이 옳습니다.
+
+---
+
+### 총평
+현재 작성하신 온톨로지 적용 방안은 기존 KIDA_ADSIM v0.5의 구조적 부채를 해결하고, v0.6의 Monte Carlo 실험과 향후 Cesium.js 3D 확장을 위한 **단단한 기반이 될 훌륭한 설계**입니다. 
+
+기존의 86개 테스트 코드(Regression Test)를 유지하면서 진행하겠다는 접근 방식도 매우 안정적입니다. 위의 1번(에이전트 주입)과 2번(다중 능력 컴포지션) 부분만 설계 단계에서 살짝 다듬고 구현에 들어가신다면, C2 아키텍처 확장이나 신규 무기체계 도입 시 파일 수정 지점을 1곳(`config.py` 또는 `registry.py`)으로 완벽하게 줄일 수 있을 것입니다.
+
+
+제공해주신 config.py, network.py, threats.py, comms.py를 포함한 전체 코드를 심층 검토했습니다.
+
+전체 시스템 관점에서 보았을 때, 작성하신 "경량 도메인 온톨로지" 계획은 방향성이 매우 정확합니다. 하지만 기존 시스템 곳곳에 **'숨겨진 하드코딩(Hidden Hardcoding)'과 '아키텍처 결합(Coupling)'**이 흩어져 있어, 계획서대로 리팩토링을 진행하더라도 "Config만 수정해서 새 무기체계를 추가한다"는 목표를 달성하지 못하고 또다시 코드를 수정해야 하는 병목(Bottleneck) 구간들이 발견되었습니다.
+
+시니어 개발자 관점에서, 계획서가 놓치고 있는 5가지 치명적인 통합 이슈와 해결 방안을 제시합니다.
+
+1. network.py의 하드코딩된 토폴로지 규칙 (가장 시급한 수정 요망)
+[현황 분석]
+network.py의 build_linear_topology를 보면 특정 무기체계 이름(EWR, PATRIOT_RADAR, MCRC, TOC_PAT 등)이 문자열로 강하게 하드코딩되어 있습니다.
+
+Python
+# network.py 내부
+if s.sensor_type == "PATRIOT_RADAR":
+    _add_edge_if_exists(G, s.agent_id, "TOC_PAT", comm)
+이 상태라면 온톨로지와 config.py에 새로운 센서(예: L_SAM_RADAR)를 추가해도, 네트워크 연결이 되지 않아 시뮬레이션에서 완전히 무용지물이 됩니다.
+
+[보완 방안]
+Phase 1의 온톨로지 모델(ontology.py) 설계 시, 네트워크 계층 구조를 정의하는 관계(Relationship) 메타데이터를 추가해야 합니다.
+
+Python
+class SensorType(EntityType):
+    category: Literal["sensor"] = "sensor"
+    capability: DetectionCapability
+    # 추가: 선형 C2 아키텍처에서 보고할 상위 노드 타입 정의
+    reporting_node_type: Optional[str] = Field(default=None) 
+이후 network.py는 하드코딩 분기를 지우고, Registry를 통해 reporting_node_type을 조회하여 동적으로 엣지(Edge)를 생성하도록 전면 개편해야 합니다.
+
+2. model.py 내부에 숨겨진 무기 할당 딕셔너리 (_find_linear_shooter)
+[현황 분석]
+model.py의 _find_linear_shooter 메서드 내부에 위협 우선순위를 결정하는 딕셔너리가 로컬 변수로 하드코딩되어 있습니다.
+
+Python
+# model.py 내부
+type_priority = {
+    "SRBM": ["PATRIOT_PAC3", "CHEONGUNG2"],
+    "CRUISE_MISSILE": ["PATRIOT_PAC3", "CHEONGUNG2", "KF16"],
+    # ...
+}
+계획서의 Phase 3에서 이 로직을 LinearC2Strategy로 옮기더라도, 새로운 사수 타입(예: L_SAM)이 추가되면 결국 Strategy 클래스 코드를 또 수정해야 합니다.
+
+[보완 방안]
+이러한 "교전 우선순위(Target Priority)" 규칙은 C2 전략의 일부가 아니라 **온톨로지의 지식(Knowledge)**이어야 합니다. 레지스트리에서 위협 타입과 사수 타입의 Pk 테이블을 기반으로 교전 가능 여부와 우선순위를 **동적으로 추론(Reasoning)**하도록 수정해야 완전한 확장성을 얻을 수 있습니다.
+
+3. comms.py의 OCP(개방-폐쇄 원칙) 위배
+[현황 분석]
+comms.py의 CommChannel.get_link_latency 메서드를 보면 통신 열화 완화 로직에 아키텍처 이름이 하드코딩되어 있습니다.
+
+Python
+# comms.py 내부
+if self.architecture == "killweb":
+    latency_multiplier *= COMM_DEGRADATION["killweb_redundancy_factor"]
+목표 중 하나가 "3번째 아키텍처(Hybrid) 추가 시 확장성 보장"인데, 현재 구조라면 새 아키텍처 추가 시 comms.py도 수정해야 합니다.
+
+[보완 방안]
+통신 채널 동작 역시 ArchitectureStrategy의 일부로 편입시키거나, Strategy 인터페이스에 get_network_redundancy_factor() 같은 메서드를 정의하여 comms.py가 Strategy 객체를 통해 값을 받아오도록 결합도를 낮춰야 합니다.
+
+4. threats.py와 ScenarioSchema의 데이터 파이프라인
+[현황 분석]
+계획서 Phase 4에서 config.py의 시나리오를 ScenarioSchema Pydantic 모델로 검증한다고 했습니다. 그러나 현재 threats.py는 SCENARIO_PARAMS 딕셔너리에 직접 접근(scenario.get("approach_azimuth", ...))하여 위협을 생성하고 있습니다.
+
+[보완 방안]
+리팩토링 시, threats.py가 더 이상 딕셔너리를 직접 읽지 않도록 해야 합니다. 시뮬레이션 초기화 단계(AirDefenseModel.__init__)에서 ScenarioSchema 인스턴스를 생성하고, 이를 threats.py의 generate_threats_for_scenario에 넘겨주는 방식(Dependency Injection)으로 파이프라인을 수정해야 Pydantic의 이점(타입 힌트, 기본값 자동 할당)을 살릴 수 있습니다.
+
+5. 전역 Registry 생명주기(Lifecycle) 및 관리 주체 명확화
+[현황 분석]
+계획서 상에는 EntityRegistry를 어떻게 생성하고 관리할지가 누락되어 있습니다. M&S에서는 Multi-agent 구조를 가지므로 단일 상태 공간 관리가 중요합니다.
+
+[보완 방안]
+AirDefenseModel의 __init__ 최상단에서 Registry를 초기화하는 단일 진입점을 구축해야 합니다.
+
+Python
+# model.py 개선
+class AirDefenseModel(Model):
+    def __init__(self, ...):
+        # 1. 온톨로지 레지스트리 초기화 및 로드
+        self.registry = EntityRegistry()
+        self.registry.load_from_config(config)
+        
+        # 2. 전략 객체 초기화
+        self.strategy = StrategyFactory.create(self.architecture, self.registry)
+        
+        # 3. 에이전트 생성 시 Registry 데이터 주입
+        # ...
+전체 리뷰 결론
+제안하신 "경량 도메인 온톨로지 적용 방안"은 Pydantic과 Strategy 패턴을 적재적소에 배치한 매우 우수한 설계입니다.
+
+다만 위에서 지적한 network.py의 토폴로지 연결 하드코딩과 model.py 내의 교전 우선순위 하드코딩은 온톨로지 도입의 가장 큰 수혜(코드 수정 없는 확장)를 가로막는 요소이므로, 계획서의 Phase 2 (엔티티 레지스트리 구성) 단계에서 반드시 온톨로지 속성(Property)으로 흡수하여 함께 리팩토링하시기를 강력히 권장합니다.
