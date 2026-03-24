@@ -1,0 +1,25 @@
+======================================================================
+Strategy 패턴 검증 — 아키텍처별 전략 위임 동작 확인
+======================================================================
+
+[LINEAR]
+  Strategy class: LinearC2Strategy
+  Redundancy factor: 1.0
+  Registry ref: True
+  Topology: 13 nodes, 12 edges
+  SRBM max_simultaneous: 3
+  Fusion Pk bonus: 0.0000
+  Selected shooter: None (None)
+
+[KILLWEB]
+  Strategy class: KillWebStrategy
+  Redundancy factor: 0.5
+  Registry ref: True
+  Topology: 13 nodes, 66 edges
+  SRBM max_simultaneous: 3
+  Fusion Pk bonus: 0.0000
+  Selected shooter: None (None)
+
+── model.py 아키텍처 분기 제거 검증 ──
+  model.py 내 self.architecture 분기 수: 0
+  (유일한 분기: __init__의 strategy 선택)
