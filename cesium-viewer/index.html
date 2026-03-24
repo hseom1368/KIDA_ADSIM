@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KIDA ADSIM - 3D Viewer</title>
+
+    <!-- CesiumJS CDN -->
+    <script src="https://cesium.com/downloads/cesiumjs/releases/1.130/Build/Cesium/Cesium.js"></script>
+    <link href="https://cesium.com/downloads/cesiumjs/releases/1.130/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+
+    <link rel="stylesheet" href="css/hud.css">
+</head>
+<body>
+    <!-- 컨트롤 패널 -->
+    <div id="control-panel">
+        <div class="panel-section">
+            <label for="scenario-select">Scenario</label>
+            <select id="scenario-select">
+                <option value="scenario_1_saturation">S1: Saturation Attack</option>
+                <option value="scenario_2_complex">S2: Complex Threat</option>
+                <option value="scenario_3_ew_light">S3: EW (Light)</option>
+                <option value="scenario_3_ew_moderate">S3: EW (Moderate)</option>
+                <option value="scenario_3_ew_heavy">S3: EW (Heavy)</option>
+                <option value="scenario_4_sequential">S4: Sequential</option>
+                <option value="scenario_5_node_destruction">S5: Node Destruction</option>
+            </select>
+        </div>
+
+        <div class="panel-section">
+            <label>Architecture</label>
+            <div class="arch-toggle">
+                <button id="btn-linear" class="arch-btn">Linear C2</button>
+                <button id="btn-killweb" class="arch-btn active">Kill Web</button>
+            </div>
+        </div>
+
+        <div class="panel-section">
+            <label>Comparison</label>
+            <button id="btn-compare" class="compare-btn">Compare Mode</button>
+        </div>
+
+        <div class="panel-section">
+            <label>Playback</label>
+            <div class="playback-controls">
+                <button id="btn-play-pause" class="ctrl-btn" title="Play/Pause">&#9654;</button>
+                <select id="speed-select" title="Speed">
+                    <option value="1">1x</option>
+                    <option value="2">2x</option>
+                    <option value="5" selected>5x</option>
+                    <option value="10">10x</option>
+                    <option value="20">20x</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="panel-section">
+            <label>Camera</label>
+            <div class="camera-presets">
+                <button class="preset-btn" data-preset="overview" title="Overview">OVR</button>
+                <button class="preset-btn" data-preset="tactical" title="Tactical">TAC</button>
+                <button class="preset-btn" data-preset="horizontal" title="Horizontal">HOR</button>
+                <button class="preset-btn" data-preset="battery" title="Battery">BAT</button>
+            </div>
+        </div>
+
+        <div id="loading-indicator" class="hidden">Loading...</div>
+    </div>
+
+    <!-- Cesium 뷰어 컨테이너 (단일 모드) -->
+    <div id="viewer-container">
+        <div id="cesiumContainer"></div>
+    </div>
+
+    <!-- 비교 모드 컨테이너 -->
+    <div id="compare-container" class="hidden">
+        <div class="compare-viewer">
+            <div class="compare-label">Linear C2</div>
+            <div id="cesiumLeft"></div>
+        </div>
+        <div class="compare-divider"></div>
+        <div class="compare-viewer">
+            <div class="compare-label">Kill Web</div>
+            <div id="cesiumRight"></div>
+        </div>
+    </div>
+
+    <!-- 정보 패널 -->
+    <div id="info-panel" class="hidden">
+        <div id="info-panel-header">
+            <span id="info-panel-title">Entity Info</span>
+            <button id="info-panel-close">&times;</button>
+        </div>
+        <div id="info-panel-content"></div>
+    </div>
+
+    <script src="js/czml-loader.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
