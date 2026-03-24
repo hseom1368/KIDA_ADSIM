@@ -83,14 +83,14 @@ config.py → ontology.py → registry.py → strategies.py → model.py → age
 - 스냅샷 메모리 — record_snapshots=True 시 배치 실험에서 메모리 증가 가능
 - agents.py 온톨로지 DI 미완료 — 현재 config.py 딕셔너리 직접 참조 유지 (향후 Phase 5 완성)
 
-## 다음 작업: v0.6 (Monte Carlo 통계 분석)
-1. **Monte Carlo 배치 실험 프레임워크** — 7 시나리오 × 2 아키텍처 × 300 시드 = 4,200회
-   - 수렴 분석, CSV 저장, multiprocessing 병렬화
-2. **통계 분석 모듈** (`modules/stats.py` 신규)
-   - 정규성 검정 (Shapiro-Wilk), 평균 비교 (Welch's t / Mann-Whitney U)
-   - 효과 크기 (Cohen's d), 95% 신뢰 구간, Bonferroni 다중 비교 보정
-3. **최종 분석 보고서** — 시나리오별 박스플롯/히트맵/레이더 차트, 정책 제언
-4. **인터랙티브 시각화 (선택)** — plotly/dash 기반 웹 대시보드
+## 다음 작업: v0.6.x (Cesium 3D 시각화 통합)
+- **v0.6.1** — CZML Exporter 고도화 (궤적 보간, 교전 이벤트, 토폴로지, viewer_config.json)
+- **v0.6.2** — CesiumJS 통합 뷰어 기반 (`cesium-viewer/`, CZML 로더, 비교 모드)
+- **v0.6.3** — 3D 센서 볼륨 & 교전 시각화 (레이더 볼륨, 요격 궤적, 폭발 이펙트)
+- **v0.6.4** — 성능 최적화 & Military HUD (Primitive API, HUD 패널)
+- **v0.6.5** — 통합 검증 & 문서화 (E2E 테스트, run_cesium.py, 문서 갱신)
+- **v0.7** — Monte Carlo 통계 분석 (기존 v0.6 계획 이동)
+- 상세 Spec: `cesium_integration_plan.md` 참조
 
 ## 자주 쓰는 명령어
 ```bash
