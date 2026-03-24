@@ -1398,7 +1398,7 @@ AC-3: python run_cesium.py --all 실행 시 14개 파일 생성
 **Spec**:
 ```markdown
 # CHANGELOG.md 추가 내용
-## [v0.7] — Cesium 3D 시각화 통합
+## [v0.6] — Cesium 3D 시각화 통합
 ### 변경사항
 - CZMLExporter v2: 궤적 보간, 교전 이벤트, 토폴로지 패킷
 - CesiumConfigExporter: 센서 볼륨, 교전 정책, HUD 설정 JSON
@@ -1412,7 +1412,7 @@ AC-3: python run_cesium.py --all 실행 시 14개 파일 생성
 
 **Acceptance Criteria**:
 ```
-AC-1: CHANGELOG.md에 v0.7 섹션 추가
+AC-1: CHANGELOG.md에 v0.6 섹션 추가
 AC-2: CLAUDE.md 디렉토리 구조에 cesium-viewer/ 반영
 AC-3: README.md에 Cesium 실행 방법 섹션 추가
 ```
@@ -1444,7 +1444,7 @@ AC-3: README.md에 Cesium 실행 방법 섹션 추가
 | P4 | 50+ 동시 위협에서 60fps, HUD 실시간 갱신 |
 | P5 | python run_cesium.py --serve 단일 명령으로 전체 파이프라인 동작 |
 
-### 최종 완료 기준 (v0.7 릴리즈)
+### 최종 완료 기준 (v0.6 릴리즈)
 
 ```
 1. seed=42 시나리오 1 성능 기준선 불변 (leaker_rate, s2s_time, success_rate)
