@@ -7,20 +7,25 @@ Mesa(ABM) + SimPy(DES) + NetworkX 기반 에이전트 시뮬레이션.
 ## 디렉터리 구조
 ```
 modules/
-  config.py    — 모든 파라미터 (센서, C2, 사수, 위협, 시나리오, 통신, 교전정책, COP, 적응형교전, 통신열화)
-  agents.py    — Mesa 에이전트 4종 (Sensor, C2Node, Shooter, Threat) + _slant_range()
-  model.py     — 통합 시뮬레이션 엔진 (AirDefenseModel) + COP 차별화 + 적응형 교전 + 스냅샷
-  network.py   — NetworkX 토폴로지 빌더 (선형/킬웹)
-  comms.py     — SimPy 통신 채널 + 킬체인 프로세스 + 링크별 동적 열화
-  metrics.py   — 12개 성능 지표 수집기
-  threats.py   — 위협 생성기 (5개 시나리오)
-  viz.py       — 2D 전술 시각화 (matplotlib.animation 기반)
-notebook1~5    — Jupyter 노트북 (모델정의, 시나리오, 배치실험, 분석, 전술시각화)
+  config.py      — 모든 파라미터 + TOPOLOGY_RELATIONS (토폴로지 관계 매핑)
+  ontology.py    — Pydantic 도메인 온톨로지 (SensorType/C2Type/ShooterType/ThreatType)
+  registry.py    — 엔티티 레지스트리 (config→온톨로지 변환, Pk 기반 우선순위, 토폴로지 역조회)
+  strategies.py  — 아키텍처 전략 패턴 (LinearC2Strategy/KillWebStrategy)
+  agents.py      — Mesa 에이전트 4종 (Sensor, C2Node, Shooter, Threat) + _slant_range()
+  model.py       — 통합 시뮬레이션 엔진 (AirDefenseModel) — 전략 위임 패턴
+  network.py     — NetworkX 토폴로지 빌더 (선형/킬웹)
+  comms.py       — SimPy 통신 채널 + 킬체인 프로세스 + redundancy_factor 주입
+  metrics.py     — 12개 성능 지표 수집기
+  threats.py     — 위협 생성기 (5개 시나리오)
+  exporters.py   — CZML 내보내기 (Cesium 3D 시각화)
+  viz.py         — 2D 전술 시각화 (matplotlib.animation 기반)
+notebook1~5      — Jupyter 노트북 (모델정의, 시나리오, 배치실험, 분석, 전술시각화)
 ```
 
 ## 기술 스택
 - Python 3.10+, SimPy 4.1, Mesa 3.0, NetworkX 3.0
 - numpy, pandas, scipy, matplotlib, seaborn
+- pydantic 2.x (도메인 온톨로지 타입 검증)
 
 ## 코딩 규칙
 - 주석·변수명: 한국어 주석 허용, 변수·함수명은 영문 snake_case
@@ -28,6 +33,8 @@ notebook1~5    — Jupyter 노트북 (모델정의, 시나리오, 배치실험, 
 - 에이전트 간 통신은 반드시 SimPy yield를 통한 지연 모델링
 - 거리 계산: 고도 반영 시 `_slant_range()` 사용 (구현 완료)
 - 교전 시점 판단: `_should_engage_now()` → ENGAGEMENT_POLICY 참조
+- 아키텍처 분기: `model.py`에서 `self.strategy.method()` 위임 — if/else 아키텍처 분기 금지
+- Pydantic 모델: 빌드 타임(초기화) 검증 전용 — 시뮬레이션 step() 루프에서 Pydantic 호출 금지
 - 테스트: 변경 후 반드시 `python -m pytest tests/` 및 시나리오 1 스모크 테스트 실행
 
 ## 핵심 아키텍처 비교 (v0.5 기준, 시나리오 1 seed=42)
@@ -44,20 +51,37 @@ notebook1~5    — Jupyter 노트북 (모델정의, 시나리오, 배치실험, 
 | 교전 정책 | 고정 다중 교전 | **적응형 (탄약 기반 자동 전환)** |
 | 통신 열화 | 전역 균일 | **링크별 차등 + 메시 다중경로 완화** |
 
-## 현재 버전: v0.5 (완료)
-**상태**: COP 차별화 + 적응형 교전 + 통신 동적 열화 + 2D 시각화 + 86개 테스트
+## 현재 버전: v0.5.1 (온톨로지 리팩토링)
+**상태**: Pydantic 도메인 온톨로지 + Strategy 패턴 + Registry + CZML 내보내기 + 146개 테스트 (13개 파일)
 
-## v0.5에서 구현/수정된 핵심 사항
+## 소프트웨어 아키텍처 흐름 (v0.5.1)
+```
+config.py → ontology.py → registry.py → strategies.py → model.py → agents.py
+(파라미터)   (Pydantic 타입)  (타입 레지스트리)  (전략 패턴)     (시뮬엔진)    (Mesa 에이전트)
+```
+- **초기화 순서**: Registry 로드 → Strategy 생성 → Agent 생성 → Topology 빌드 → Comm 채널
+- **런타임 규칙**: Pydantic 빌드 타임 전용, step() 루프에서 Pydantic 호출 금지
+
+## 모듈별 핵심 역할 (v0.5.1)
+| 모듈 | 핵심 역할 | 비고 |
+|------|-----------|------|
+| `ontology.py` | SensorType/C2Type/ShooterType/ThreatType + 능력 모델 | 토폴로지 관계 필드 내장 |
+| `registry.py` | config→온톨로지 변환, Pk 사수 우선순위, 토폴로지 역조회 | TOPOLOGY_RELATIONS 참조 |
+| `strategies.py` | LinearC2Strategy/KillWebStrategy (9개 추상 메서드) | 11개 if/else 분기 대체 |
+| `exporters.py` | 스냅샷→CZML 변환 (Cesium 3D 시각화) | 한반도 좌표 기준 |
+| `model.py` | 시뮬엔진 — `self.strategy.method()` 위임 | 아키텍처 분기 코드 없음 |
+| `comms.py` | SimPy 통신 — redundancy_factor 주입 | architecture 문자열 의존 제거 |
+
+## v0.5에서 구현된 핵심 사항
 1. **COP 품질 차별화** — Kill Web: 센서 융합 √N 오차, 아군 상태 공유, 교전 계획 공유
 2. **적응형 교전 정책** — 탄약 30% 이하 단일교전, 10% 이하 고위협만 교전
 3. **통신 네트워크 동적 열화** — 링크별 차등 재밍, Kill Web 메시 다중경로 완화
 4. **2D 전술 시각화 모듈** — TacticalVisualizer (렌더/애니메이션/비교/타임라인)
-5. **시각화 노트북** — notebook5 (전술 애니메이션 + 아키텍처 비교)
-6. **테스트 확장** — 9개 파일, 86개 테스트 (신규 29개)
 
-## 알려진 문제 (v0.5)
+## 알려진 문제 (v0.5.1)
 - 한글 폰트 미지원 — matplotlib 시각화에서 한글 글리프 경고
 - 스냅샷 메모리 — record_snapshots=True 시 배치 실험에서 메모리 증가 가능
+- agents.py 온톨로지 DI 미완료 — 현재 config.py 딕셔너리 직접 참조 유지 (향후 Phase 5 완성)
 
 ## 다음 작업: v0.6 (Monte Carlo 통계 분석)
 1. **Monte Carlo 배치 실험 프레임워크** — 7 시나리오 × 2 아키텍처 × 300 시드 = 4,200회
@@ -91,3 +115,5 @@ python -m pytest tests/ -v
 - `CHANGELOG.md` — 버전별 업데이트 이력 + 발견된 문제 + 개선 계획
 - `plan.md` — 현재 진행 중인 개선 작업의 상세 기술 계획 (현재: v0.6 계획 수립)
 - `dev_blueprint.md` — 초기 개발 청사진 (참조용, 동결)
+- `ontology_refactoring_plan.md` — 온톨로지 리팩토링 분석 (참조용)
+- `ontology_refactoring_plan_refined.md` — 온톨로지 리팩토링 상세 권장안 (참조용)

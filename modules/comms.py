@@ -13,7 +13,7 @@ class CommChannel:
     """통신 채널 - 지연, 큐잉, 재밍 열화 모델링
     v0.5: 링크별 차등 열화 + Kill Web 메시 다중 경로 완화"""
 
-    def __init__(self, env, architecture="linear"):
+    def __init__(self, env, architecture="linear", redundancy_factor=None):
         self.env = env
         self.architecture = architecture
         self.params = COMM_PARAMS[architecture]
@@ -22,6 +22,12 @@ class CommChannel:
         self.message_log = []
         # v0.5: 링크별 열화 상태
         self.link_degradation = {}  # {(src, dst): degradation_factor}
+        # v0.6: 전략에서 주입된 중복 경로 완화 계수 (Gemini #7)
+        self.redundancy_factor = (
+            redundancy_factor if redundancy_factor is not None
+            else COMM_DEGRADATION.get("killweb_redundancy_factor", 0.5)
+            if architecture == "killweb" else 1.0
+        )
 
     def set_jamming(self, level):
         """재밍 수준 설정 (0.0 ~ 1.0)"""
@@ -77,9 +83,8 @@ class CommChannel:
         latency_multiplier = (COMM_DEGRADATION["base_latency_factor"]
                               + jamming_effect * COMM_DEGRADATION["jamming_latency_multiplier"])
 
-        # Kill Web: 메시 구조 다중 경로로 열화 완화
-        if self.architecture == "killweb":
-            latency_multiplier *= COMM_DEGRADATION["killweb_redundancy_factor"]
+        # 메시 구조 다중 경로로 열화 완화 (전략에서 주입된 계수 사용)
+        latency_multiplier *= self.redundancy_factor
 
         return latency_multiplier
 

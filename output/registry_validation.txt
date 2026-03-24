@@ -1,0 +1,42 @@
+======================================================================
+EntityRegistry 검증 결과
+======================================================================
+
+── 센서 타입 ──
+  EWR: range=500.0km, reporting→MCRC
+  PATRIOT_RADAR: range=170.0km, reporting→TOC_PAT
+  MSAM_MFR: range=100.0km, reporting→TOC_MSAM
+  SHORAD_RADAR: range=17.0km, reporting→TOC_SHORAD
+
+── C2 타입 ──
+  MCRC: capacity=5, parent→None
+  BATTALION_TOC: capacity=3, parent→MCRC
+  EOC: capacity=5, parent→None
+
+── 사수 타입 ──
+  PATRIOT_PAC3: range=120.0km, controlling→TOC_PAT
+    pk_table: SRBM=0.85, CRUISE_MISSILE=0.8, AIRCRAFT=0.9, UAS=0.7
+  CHEONGUNG2: range=40.0km, controlling→TOC_MSAM
+    pk_table: SRBM=0.75, CRUISE_MISSILE=0.8, AIRCRAFT=0.85, UAS=0.65
+  BIHO: range=7.0km, controlling→TOC_SHORAD
+    pk_table: SRBM=0.0, CRUISE_MISSILE=0.3, AIRCRAFT=0.5, UAS=0.6
+  KF16: range=100.0km, controlling→MCRC
+    pk_table: SRBM=0.0, CRUISE_MISSILE=0.75, AIRCRAFT=0.85, UAS=0.5
+
+── 위협 타입 ──
+  SRBM: speed=2.0km/s, alt=50.0km, rcs=0.5m², profile=3 phases
+  CRUISE_MISSILE: speed=0.27km/s, alt=0.03km, rcs=0.05m², profile=3 phases
+  AIRCRAFT: speed=0.34km/s, alt=10.0km, rcs=5.0m², profile=3 phases
+  UAS: speed=0.05km/s, alt=0.3km, rcs=0.005m², profile=2 phases
+
+── Pk 기반 사수 우선순위 ──
+  SRBM: PATRIOT_PAC3(Pk=0.85) > CHEONGUNG2(Pk=0.75)
+  CRUISE_MISSILE: PATRIOT_PAC3(Pk=0.80) > CHEONGUNG2(Pk=0.80) > KF16(Pk=0.75) > BIHO(Pk=0.30)
+  AIRCRAFT: PATRIOT_PAC3(Pk=0.90) > CHEONGUNG2(Pk=0.85) > KF16(Pk=0.85) > BIHO(Pk=0.50)
+  UAS: PATRIOT_PAC3(Pk=0.70) > CHEONGUNG2(Pk=0.65) > BIHO(Pk=0.60) > KF16(Pk=0.50)
+
+── 토폴로지 역조회 ──
+  MCRC: sensors=['EWR'], shooters=['KF16'], children=['BATTALION_TOC']
+  TOC_PAT: sensors=['PATRIOT_RADAR'], shooters=['PATRIOT_PAC3'], children=[]
+  TOC_MSAM: sensors=['MSAM_MFR'], shooters=['CHEONGUNG2'], children=[]
+  TOC_SHORAD: sensors=['SHORAD_RADAR'], shooters=['BIHO'], children=[]

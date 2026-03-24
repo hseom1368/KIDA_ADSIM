@@ -1,0 +1,29 @@
+======================================================================
+KIDA_ADSIM v0.5.1 — 온톨로지 리팩토링 스모크 테스트 결과
+======================================================================
+
+[LINEAR]
+  S2S 시간: mean=343.9s, median=366.8s
+  누출률: 35.6%
+  교전 성공률: 37.1%
+  다중교전율: 14.3%
+  토폴로지: nodes=13, edges=12, connected=True
+  Strategy: LinearC2Strategy
+  Registry loaded: True
+  Comm redundancy_factor: 1.0
+
+[KILLWEB]
+  S2S 시간: mean=5.0s, median=5.1s
+  누출률: 22.2%
+  교전 성공률: 37.5%
+  다중교전율: 16.7%
+  토폴로지: nodes=13, edges=66, connected=True
+  Strategy: KillWebStrategy
+  Registry loaded: True
+  Comm redundancy_factor: 0.5
+
+======================================================================
+기준값 비교 (CLAUDE.md v0.5 기준):
+  linear:  leaker=35.6%, s2s=~344s, success=37.1%  ✓ 동일
+  killweb: leaker=22.2%, s2s=~5s,   success=37.5%  ✓ 동일
+======================================================================
