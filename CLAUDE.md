@@ -52,16 +52,25 @@ notebook1~5      — Jupyter 노트북 (모델정의, 시나리오, 배치실험
 | 통신 열화 | 전역 균일 | **링크별 차등 + 메시 다중경로 완화** |
 
 ## 현재 버전: v0.5.1 (온톨로지 리팩토링)
-**상태**: Pydantic 도메인 온톨로지 + Strategy 패턴 + Registry + CZML 내보내기 + 146개 테스트
+**상태**: Pydantic 도메인 온톨로지 + Strategy 패턴 + Registry + CZML 내보내기 + 146개 테스트 (13개 파일)
 
-## v0.5.1에서 구현/수정된 핵심 사항 (온톨로지 리팩토링)
-1. **Pydantic 도메인 온톨로지** (`ontology.py`) — SensorType/C2Type/ShooterType/ThreatType + 능력 모델 + 토폴로지 관계 필드
-2. **엔티티 레지스트리** (`registry.py`) — config→온톨로지 변환, Pk 기반 사수 우선순위, 토폴로지 역조회
-3. **Strategy 패턴** (`strategies.py`) — LinearC2Strategy/KillWebStrategy: model.py의 11개 아키텍처 분기를 전략 위임으로 교체
-4. **model.py 리팩토링** — Registry→Strategy→Agent→Topology→Comm 초기화 순서, 아키텍처 분기 제거
-5. **comms.py 개선** — architecture 문자열 의존 → redundancy_factor 수치 주입
-6. **CZML 내보내기** (`exporters.py`) — Cesium 3D 시각화용 스냅샷 데이터 변환
-7. **테스트 확장** — 13개 파일, 146개 테스트 (신규 60개)
+## 소프트웨어 아키텍처 흐름 (v0.5.1)
+```
+config.py → ontology.py → registry.py → strategies.py → model.py → agents.py
+(파라미터)   (Pydantic 타입)  (타입 레지스트리)  (전략 패턴)     (시뮬엔진)    (Mesa 에이전트)
+```
+- **초기화 순서**: Registry 로드 → Strategy 생성 → Agent 생성 → Topology 빌드 → Comm 채널
+- **런타임 규칙**: Pydantic 빌드 타임 전용, step() 루프에서 Pydantic 호출 금지
+
+## 모듈별 핵심 역할 (v0.5.1)
+| 모듈 | 핵심 역할 | 비고 |
+|------|-----------|------|
+| `ontology.py` | SensorType/C2Type/ShooterType/ThreatType + 능력 모델 | 토폴로지 관계 필드 내장 |
+| `registry.py` | config→온톨로지 변환, Pk 사수 우선순위, 토폴로지 역조회 | TOPOLOGY_RELATIONS 참조 |
+| `strategies.py` | LinearC2Strategy/KillWebStrategy (9개 추상 메서드) | 11개 if/else 분기 대체 |
+| `exporters.py` | 스냅샷→CZML 변환 (Cesium 3D 시각화) | 한반도 좌표 기준 |
+| `model.py` | 시뮬엔진 — `self.strategy.method()` 위임 | 아키텍처 분기 코드 없음 |
+| `comms.py` | SimPy 통신 — redundancy_factor 주입 | architecture 문자열 의존 제거 |
 
 ## v0.5에서 구현된 핵심 사항
 1. **COP 품질 차별화** — Kill Web: 센서 융합 √N 오차, 아군 상태 공유, 교전 계획 공유
@@ -106,3 +115,5 @@ python -m pytest tests/ -v
 - `CHANGELOG.md` — 버전별 업데이트 이력 + 발견된 문제 + 개선 계획
 - `plan.md` — 현재 진행 중인 개선 작업의 상세 기술 계획 (현재: v0.6 계획 수립)
 - `dev_blueprint.md` — 초기 개발 청사진 (참조용, 동결)
+- `ontology_refactoring_plan.md` — 온톨로지 리팩토링 분석 (참조용)
+- `ontology_refactoring_plan_refined.md` — 온톨로지 리팩토링 상세 권장안 (참조용)
