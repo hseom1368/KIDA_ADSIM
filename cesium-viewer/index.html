@@ -64,6 +64,20 @@
             </div>
         </div>
 
+        <div class="panel-section">
+            <label>Overlays</label>
+            <div class="overlay-controls">
+                <button id="btn-toggle-radar" class="overlay-btn active" title="Radar Volumes">RAD</button>
+                <button id="btn-toggle-topo" class="overlay-btn active" title="Topology">TOPO</button>
+            </div>
+        </div>
+
+        <div class="panel-section">
+            <label>Radar Azimuth</label>
+            <input id="radar-azimuth" type="range" min="-180" max="180" value="0" step="5">
+            <span id="radar-azimuth-val">0&deg;</span>
+        </div>
+
         <div id="loading-indicator" class="hidden">Loading...</div>
     </div>
 
@@ -95,6 +109,9 @@
     </div>
 
     <script src="js/czml-loader.js"></script>
+    <script src="js/radar-volumes.js"></script>
+    <script src="js/engagement-viz.js"></script>
+    <script src="js/topology-viz.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>

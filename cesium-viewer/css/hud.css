@@ -229,6 +229,49 @@ select:focus {
     color: #0f0;
 }
 
+/* Overlay controls */
+.overlay-controls {
+    display: flex;
+    gap: 4px;
+}
+
+.overlay-btn {
+    flex: 1;
+    background: #001a00;
+    color: #0a0;
+    border: 1px solid #0f03;
+    padding: 4px 2px;
+    font-family: inherit;
+    font-size: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.overlay-btn.active {
+    background: #003300;
+    color: #0f0;
+    border-color: #0f0;
+}
+
+.overlay-btn:hover {
+    border-color: #0f06;
+}
+
+/* Radar azimuth slider */
+input[type="range"] {
+    width: 100%;
+    accent-color: #0f0;
+    cursor: pointer;
+}
+
+#radar-azimuth-val {
+    display: block;
+    text-align: center;
+    color: #0f0;
+    font-size: 10px;
+    margin-top: 2px;
+}
+
 /* Loading indicator */
 #loading-indicator {
     text-align: center;

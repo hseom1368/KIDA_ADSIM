@@ -5,7 +5,7 @@
  * 시뮬레이션 로직(교전 판정, 이동 계산 등) 절대 수행하지 않음.
  */
 
-/* global Cesium, CZMLLoader */
+/* global Cesium, CZMLLoader, RadarVolumes, EngagementViz, TopologyViz */
 
 const App = (() => {
     "use strict";
@@ -60,8 +60,10 @@ const App = (() => {
         // 카메라 → 한반도 중심
         _flyToPreset("overview");
 
-        // CZMLLoader 초기화
+        // 모듈 초기화
         CZMLLoader.init(_viewer);
+        EngagementViz.init(_viewer);
+        TopologyViz.init(_viewer);
 
         // UI 이벤트 바인딩
         _bindEvents();
@@ -79,7 +81,7 @@ const App = (() => {
             const czmlUrl = CONFIG.CZML_BASE_PATH + scenario + "_" + arch + ".czml";
             const configUrl = CONFIG.CZML_BASE_PATH + "viewer_config_" + arch + ".json";
 
-            await CZMLLoader.loadCZML(czmlUrl);
+            const dataSource = await CZMLLoader.loadCZML(czmlUrl);
 
             // viewer_config.json 로드 (에러 시 무시)
             try {
@@ -90,6 +92,9 @@ const App = (() => {
             } catch (_) {
                 // viewer_config 없어도 동작
             }
+
+            // v0.6.3: 3D 시각화 모듈 적용
+            _applyEnhancements(dataSource);
 
             // 재생 속도 설정
             CZMLLoader.setPlaybackSpeed(CONFIG.DEFAULT_SPEED);
@@ -188,6 +193,8 @@ const App = (() => {
         });
 
         CZMLLoader.init(_viewer);
+        EngagementViz.init(_viewer);
+        TopologyViz.init(_viewer);
         _flyToPreset("overview");
         _loadScenario(_currentScenario, _currentArch);
     }
@@ -377,6 +384,23 @@ const App = (() => {
             });
         });
 
+        // 오버레이 토글
+        document.getElementById("btn-toggle-radar").addEventListener("click", function() {
+            var show = RadarVolumes.toggle();
+            this.classList.toggle("active", show);
+        });
+        document.getElementById("btn-toggle-topo").addEventListener("click", function() {
+            var show = TopologyViz.toggle();
+            this.classList.toggle("active", show);
+        });
+
+        // 레이더 방위각 슬라이더
+        document.getElementById("radar-azimuth").addEventListener("input", function() {
+            var az = parseInt(this.value, 10);
+            document.getElementById("radar-azimuth-val").innerHTML = az + "&deg;";
+            RadarVolumes.updateAzimuth(az);
+        });
+
         // 정보 패널 닫기
         document.getElementById("info-panel-close").addEventListener("click", _hideEntityInfo);
 
@@ -394,6 +418,26 @@ const App = (() => {
         if (!_compareMode) {
             _loadScenario(_currentScenario, _currentArch);
         }
+    }
+
+    // ── v0.6.3 시각화 모듈 통합 ────────────────────
+
+    function _applyEnhancements(dataSource) {
+        if (!_viewer || !dataSource) return;
+
+        // 레이더 볼륨 (viewer_config 필요)
+        RadarVolumes.clear();
+        if (_viewerConfig) {
+            RadarVolumes.create(_viewer, _viewerConfig);
+        }
+
+        // 교전 시각화 (요격 궤적 + 폭발)
+        EngagementViz.init(_viewer);
+        EngagementViz.enhance(dataSource);
+
+        // 토폴로지 스타일 강화
+        TopologyViz.init(_viewer);
+        TopologyViz.enhance(dataSource);
     }
 
     function _showLoading(show) {
