@@ -345,6 +345,102 @@ input[type="range"] {
     font-weight: bold;
 }
 
+/* ── HUD 패널 ─────────────────────────────────── */
+
+#hud-panel {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 200;
+    background: rgba(0, 10, 0, 0.88);
+    border: 1px solid rgba(0, 255, 0, 0.25);
+    border-radius: 4px;
+    padding: 10px 12px;
+    min-width: 200px;
+    max-width: 240px;
+    font-size: 11px;
+    font-family: 'Consolas', 'Courier New', monospace;
+}
+
+.hud-section {
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(0, 255, 0, 0.1);
+}
+
+.hud-section:last-child {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.hud-title {
+    color: #0f0;
+    font-size: 10px;
+    font-weight: bold;
+    letter-spacing: 2px;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+}
+
+.hud-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 1px 0;
+}
+
+.hud-label {
+    color: #080;
+    font-size: 10px;
+}
+
+.hud-value {
+    color: #0f0;
+    font-weight: bold;
+    font-size: 11px;
+}
+
+.hud-green {
+    color: #0f0;
+}
+
+.hud-red {
+    color: #f44;
+}
+
+/* 교전 로그 */
+.hud-log {
+    max-height: 160px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #0f03 transparent;
+}
+
+.hud-log::-webkit-scrollbar {
+    width: 4px;
+}
+
+.hud-log::-webkit-scrollbar-thumb {
+    background: #0f03;
+    border-radius: 2px;
+}
+
+.log-entry {
+    font-size: 10px;
+    padding: 1px 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.log-hit {
+    color: #0f0;
+}
+
+.log-miss {
+    color: #f88;
+}
+
 /* ── 유틸리티 ─────────────────────────────────── */
 
 .hidden {

@@ -5,7 +5,7 @@
  * 시뮬레이션 로직(교전 판정, 이동 계산 등) 절대 수행하지 않음.
  */
 
-/* global Cesium, CZMLLoader, RadarVolumes, EngagementViz, TopologyViz */
+/* global Cesium, CZMLLoader, RadarVolumes, EngagementViz, TopologyViz, Performance, HUDPanel */
 
 const App = (() => {
     "use strict";
@@ -64,6 +64,7 @@ const App = (() => {
         CZMLLoader.init(_viewer);
         EngagementViz.init(_viewer);
         TopologyViz.init(_viewer);
+        Performance.init(_viewer);
 
         // UI 이벤트 바인딩
         _bindEvents();
@@ -195,6 +196,8 @@ const App = (() => {
         CZMLLoader.init(_viewer);
         EngagementViz.init(_viewer);
         TopologyViz.init(_viewer);
+        Performance.init(_viewer);
+        HUDPanel.destroy();
         _flyToPreset("overview");
         _loadScenario(_currentScenario, _currentArch);
     }
@@ -357,6 +360,8 @@ const App = (() => {
             } else {
                 const playing = CZMLLoader.togglePlayPause();
                 this.innerHTML = playing ? "&#9646;&#9646;" : "&#9654;";
+                // requestRenderMode: 일시정지 시 CPU 절약
+                _applyRenderMode(playing);
             }
         });
 
@@ -438,6 +443,31 @@ const App = (() => {
         // 토폴로지 스타일 강화
         TopologyViz.init(_viewer);
         TopologyViz.enhance(dataSource);
+
+        // Primitive 라벨 (센서/사수 이름표)
+        Performance.init(_viewer);
+        if (_viewerConfig) {
+            Performance.createLabels(_viewerConfig);
+        }
+
+        // HUD 패널 (방어 현황 + 교전 로그)
+        HUDPanel.destroy();
+        HUDPanel.create(_viewer, _viewerConfig);
+    }
+
+    // ── v0.6.4 requestRenderMode ────────────────────
+
+    function _applyRenderMode(isPlaying) {
+        if (!_viewer || !_viewer.scene) return;
+        if (isPlaying) {
+            // 재생 중: 연속 렌더링
+            _viewer.scene.requestRenderMode = false;
+        } else {
+            // 일시정지: 요청 시에만 렌더링 (CPU 절약)
+            _viewer.scene.requestRenderMode = true;
+            _viewer.scene.maximumRenderTimeChange = Infinity;
+            _viewer.scene.requestRender();
+        }
     }
 
     function _showLoading(show) {
