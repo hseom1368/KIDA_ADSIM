@@ -130,9 +130,20 @@ python run_cesium.py --all --serve              # 전 시나리오
 python run_cesium.py -s scenario_2_complex      # 특정 시나리오
 ```
 
+## 버전 완료 체크리스트
+v0.x 단위 작업 완료 시 아래 파일을 반드시 갱신:
+1. `CHANGELOG.md` — 변경사항(v0.x.x 세부 포함), 테스트 현황, 알려진 문제
+2. `CLAUDE.md` — 현재 버전, 디렉터리 구조, 모듈 역할, 알려진 문제, 다음 작업
+3. `README.md` — **v0.x 단위만** 기록. 기술 스택, 아키텍처 버전, 프로젝트 구조, 실행 방법, 로드맵
+   - v0.x.x 하위 버전 세부사항은 README에 기록하지 않음 (CHANGELOG.md 전용)
+   - 로드맵: 완료된 v0.x + 다음 예정 v0.x만 기록
+
 ## 이력 관리 파일
-- `README.md` — 프로젝트 목표, 개념, 아키텍처 청사진
-- `CHANGELOG.md` — 버전별 업데이트 이력 + 발견된 문제 + 개선 계획
-- `plan.md` — 현재 진행 중인 개선 작업의 상세 기술 계획 (v0.6 완료)
-- `cesium_integration_plan.md` — Cesium 3D 시각화 통합 상세 스펙 (Phase 1~5)
-- `dev_blueprint.md` — 초기 개발 청사진 (참조용, 동결)
+| 파일 | 갱신 단위 | 내용 범위 |
+|------|-----------|-----------|
+| `README.md` | v0.x | 프로젝트 개요, 기술 스택, 구조, 실행법, 로드맵 |
+| `CHANGELOG.md` | v0.x.x | 상세 변경사항, 테스트 현황, 문제점, 개선 계획 |
+| `CLAUDE.md` | v0.x.x | 에이전트 컨텍스트 (디렉터리, 모듈 역할, 코딩 규칙, 명령어) |
+| `plan.md` | 작업 단위 | 현재 진행 중인 개선 작업의 상세 기술 계획 (v0.6 완료) |
+| `cesium_integration_plan.md` | — | Cesium 3D 시각화 통합 상세 스펙 (Phase 1~5, 완료) |
+| `dev_blueprint.md` | — | 초기 개발 청사진 (참조용, 동결) |

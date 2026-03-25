@@ -57,20 +57,25 @@
 | **SimPy 4.1** | 이산사건 시뮬레이션 (킬체인 지연·큐잉) |
 | **NetworkX 3.0** | C2 토폴로지 구축 (선형/메시) |
 | **Pydantic 2.x** | 도메인 온톨로지 타입 검증 |
+| **CesiumJS 1.130** | 3D 시각화 (CZML 기반 전술 뷰어) |
 | numpy, pandas, scipy | 통계 분석 |
-| matplotlib, seaborn | 시각화 |
+| matplotlib, seaborn | 2D 시각화 |
 
-### 3.3 소프트웨어 아키텍처 (v0.5.1)
+### 3.3 소프트웨어 아키텍처 (v0.6)
 
 ```
 config.py → ontology.py → registry.py → strategies.py → model.py → agents.py
 (파라미터)   (Pydantic 타입)  (타입 레지스트리)  (전략 패턴)     (시뮬엔진)    (Mesa 에이전트)
+                                                                    ↓
+                                                              exporters.py → cesium-viewer/
+                                                              (CZML 내보내기)   (3D 시각화)
 ```
 
 - **도메인 온톨로지**: Pydantic 모델로 센서/C2/사수/위협 타입을 빌드 타임에 검증
 - **Strategy 패턴**: `LinearC2Strategy` / `KillWebStrategy`로 아키텍처별 로직 분리
 - **엔티티 레지스트리**: config → 온톨로지 변환, Pk 기반 사수 우선순위, 토폴로지 역조회
-- **CZML 내보내기**: 시뮬레이션 스냅샷을 Cesium.js 3D 시각화 형식으로 변환
+- **CZML 내보내기**: 궤적 보간, 교전 이벤트, C2 토폴로지를 CZML/JSON으로 변환
+- **3D 시각화**: CesiumJS 기반 Split-screen 비교 뷰어, Military HUD, 레이더 볼륨
 
 ### 3.4 시뮬레이션 흐름 (매 5초 스텝)
 ```
@@ -150,11 +155,16 @@ KIDA_ADSIM/
 │   ├── comms.py           # SimPy 통신 채널 + 킬체인 프로세스
 │   ├── metrics.py         # 12개 성능 지표 수집기
 │   ├── threats.py         # 위협 생성기 (5개 시나리오)
-│   ├── exporters.py       # CZML 내보내기 (Cesium 3D 시각화)
+│   ├── exporters.py       # CZML 내보내기 + CesiumConfigExporter
 │   └── viz.py             # 2D 전술 시각화 (matplotlib.animation)
-├── tests/                 # pytest 단위/통합 테스트 (13개 파일, 146개)
-├── output/                # 시뮬레이션 출력 (CZML, 검증 결과)
-├── notebook1~5.ipynb      # Jupyter 분석 노트북 (모델정의, 시나리오, 배치실험, 분석, 전술시각화)
+├── cesium-viewer/
+│   ├── index.html         # CesiumJS 3D 통합 뷰어 (CDN 기반)
+│   ├── js/                # app.js, czml-loader, radar-volumes, engagement-viz 등
+│   └── css/hud.css        # Military HUD 스타일
+├── tests/                 # pytest 단위/통합 테스트 (15개 파일, 182개)
+├── output/                # 시뮬레이션 출력 (CZML, viewer_config.json)
+├── run_cesium.py          # 시뮬→CZML→웹서버 자동화 스크립트
+├── notebook1~5.ipynb      # Jupyter 분석 노트북
 ├── CLAUDE.md              # Claude Code 세션 컨텍스트
 ├── README.md              # 프로젝트 개요 (이 파일)
 ├── CHANGELOG.md           # 버전 이력 + 문제점 + 개선 계획
@@ -183,8 +193,13 @@ for arch in ['linear', 'killweb']:
     print(f'{arch}: leaker={leaker:.1f}%, s2s={s2s:.1f}s, success={success:.1f}%')
 "
 
-# 전체 테스트 (146개)
+# 전체 테스트 (182개)
 python -m pytest tests/ -v
+
+# Cesium 3D 시각화 (시뮬→CZML→웹서버)
+python run_cesium.py --serve                    # S1 기본
+python run_cesium.py --all --serve              # 전 시나리오
+python run_cesium.py -s scenario_2_complex      # 특정 시나리오
 ```
 
 ---
@@ -197,6 +212,6 @@ python -m pytest tests/ -v
 | v0.2 | 완료 | 비행 프로파일 현실화 + 3D 경사거리 + 최적 교전 시점 |
 | v0.3 | 완료 | 시나리오 2~4 검증, EW 3단계, 테스트 45개, 코드 품질 리뷰 |
 | v0.4 | 완료 | 죽은 코드 정리, 다중 교전 모델링, 메트릭 12개, 테스트 57개 |
-| v0.5 | 완료 | COP 품질 차별화, 적응형 교전, 통신 동적 열화, 2D 전술 시각화, 테스트 86개 |
-| v0.5.1 | **완료** | Pydantic 온톨로지, Strategy 패턴, Registry, CZML 내보내기, 테스트 146개 |
-| v0.6 | **진행 예정** | Monte Carlo 300회 배치 실험, 통계 분석 모듈, 최종 분석 보고서 |
+| v0.5 | 완료 | COP 품질 차별화, 적응형 교전, 통신 동적 열화, 2D 전술 시각화, 온톨로지·Strategy 패턴·Registry 리팩터링 |
+| v0.6 | **완료** | Cesium 3D 시각화 통합 (CZML Exporter v2, CesiumJS 뷰어, Military HUD, 레이더 볼륨, 교전 시각화) |
+| v0.7 | **진행 예정** | Monte Carlo 통계 분석 |
