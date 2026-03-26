@@ -214,3 +214,143 @@ def _add_edge_if_exists(G, source, target, comm):
             bandwidth=comm["bandwidth_kbps"],
             link_type="directed",
         )
+
+
+# =============================================================================
+# v0.7 현실적 토폴로지 빌더 (3축 분리 / 통합 IAOC)
+# =============================================================================
+
+def _add_nodes(G, sensors, c2_nodes, shooters):
+    """공통 노드 추가 헬퍼"""
+    for s in sensors:
+        G.add_node(s.agent_id, agent_type="sensor", pos=s.pos,
+                   sensor_type=s.sensor_type)
+    for c in c2_nodes:
+        G.add_node(c.agent_id, agent_type="c2", pos=c.pos,
+                   node_type=c.node_type)
+    for sh in shooters:
+        G.add_node(sh.agent_id, agent_type="shooter", pos=sh.pos,
+                   weapon_type=sh.weapon_type)
+
+
+def build_realistic_linear_topology(sensors, c2_nodes, shooters):
+    """
+    현실적 선형 C2 토폴로지 (v0.7 — 3축 분리).
+    - MCRC: 지역방공 (FPS117 → MCRC → 천궁-I, KF-16)
+    - KAMD_OPS: 탄도탄 전담 (GREEN_PINE → KAMD_OPS → PAC-3, THAAD, L-SAM, 천궁-II)
+    - ARMY_LOCAL_AD: 육군 독자 (TPS880K → ARMY_AD → 천마, 비호)
+    - 3축 간 부분 연결만 (위협정보 공유, 교전상태 미공유)
+    """
+    from .config import COMM_PARAMS, TOPOLOGY_RELATIONS
+    G = nx.DiGraph()
+    comm = COMM_PARAMS["linear"]
+    _add_nodes(G, sensors, c2_nodes, shooters)
+
+    s_to_c2 = TOPOLOGY_RELATIONS["sensor_to_c2"]
+    sh_to_c2 = TOPOLOGY_RELATIONS["shooter_to_c2"]
+
+    # 센서 → 지정 C2 (TOPOLOGY_RELATIONS 기반 자동 매핑)
+    for s in sensors:
+        target_c2_type = s_to_c2.get(s.sensor_type)
+        if target_c2_type:
+            # C2 인스턴스 중 해당 타입 찾기
+            for c in c2_nodes:
+                if c.node_type == target_c2_type:
+                    _add_edge_if_exists(G, s.agent_id, c.agent_id, comm)
+                    break
+            else:
+                # fallback: 기존 하드코딩 매핑 시도
+                _add_edge_if_exists(G, s.agent_id, target_c2_type, comm)
+
+    # C2 계층: BATTALION_TOC → MCRC
+    for c in c2_nodes:
+        if c.node_type == "BATTALION_TOC":
+            for mc in c2_nodes:
+                if mc.node_type == "MCRC":
+                    _add_edge_if_exists(G, mc.agent_id, c.agent_id, comm)
+                    break
+
+    # C2 → 사수 (TOPOLOGY_RELATIONS 기반 자동 매핑)
+    for sh in shooters:
+        target_c2_type = sh_to_c2.get(sh.weapon_type)
+        if target_c2_type:
+            for c in c2_nodes:
+                if c.node_type == target_c2_type:
+                    _add_edge_if_exists(G, c.agent_id, sh.agent_id, comm)
+                    break
+            else:
+                _add_edge_if_exists(G, target_c2_type, sh.agent_id, comm)
+
+    # 3축 간 부분 연결 (위협정보만 공유, 느린 링크)
+    c2_type_map = {}
+    for c in c2_nodes:
+        c2_type_map.setdefault(c.node_type, []).append(c)
+
+    inter_c2_types = [("MCRC", "KAMD_OPS"), ("KAMD_OPS", "ARMY_LOCAL_AD")]
+    for t1, t2 in inter_c2_types:
+        for c1 in c2_type_map.get(t1, []):
+            for c2 in c2_type_map.get(t2, []):
+                if G.has_node(c1.agent_id) and G.has_node(c2.agent_id):
+                    # 느린 양방향 링크 (정보 공유만, 교전 통제 불가)
+                    G.add_edge(c1.agent_id, c2.agent_id,
+                               latency=(10, 30), bandwidth=10,
+                               link_type="inter_c2_info")
+                    G.add_edge(c2.agent_id, c1.agent_id,
+                               latency=(10, 30), bandwidth=10,
+                               link_type="inter_c2_info")
+
+    return G
+
+
+def build_realistic_killweb_topology(sensors, c2_nodes, shooters):
+    """
+    현실적 Kill Web 토폴로지 (v0.7 — 통합 IAOC).
+    - IAOC 중심 완전 메시
+    - Any Sensor → Best Shooter 원칙
+    - 모든 센서/사수가 IAOC와 직접 연결
+    """
+    from .config import COMM_PARAMS
+    G = nx.DiGraph()
+    comm = COMM_PARAMS["killweb"]
+    _add_nodes(G, sensors, c2_nodes, shooters)
+
+    # 센서 ↔ 모든 C2 (양방향)
+    for s in sensors:
+        for c in c2_nodes:
+            if G.has_node(s.agent_id) and G.has_node(c.agent_id):
+                G.add_edge(s.agent_id, c.agent_id,
+                           latency=comm["sensor_to_c2_delay"],
+                           bandwidth=comm["bandwidth_kbps"],
+                           link_type="sensor_to_c2")
+                G.add_edge(c.agent_id, s.agent_id,
+                           latency=comm["sensor_to_c2_delay"],
+                           bandwidth=comm["bandwidth_kbps"],
+                           link_type="c2_to_sensor")
+
+    # C2 ↔ C2 (상호 연결)
+    for i, c1 in enumerate(c2_nodes):
+        for c2_node in c2_nodes[i + 1:]:
+            if G.has_node(c1.agent_id) and G.has_node(c2_node.agent_id):
+                G.add_edge(c1.agent_id, c2_node.agent_id,
+                           latency=comm["c2_processing_delay"],
+                           bandwidth=comm["bandwidth_kbps"],
+                           link_type="c2_to_c2")
+                G.add_edge(c2_node.agent_id, c1.agent_id,
+                           latency=comm["c2_processing_delay"],
+                           bandwidth=comm["bandwidth_kbps"],
+                           link_type="c2_to_c2")
+
+    # C2 ↔ 모든 사수 (양방향)
+    for c in c2_nodes:
+        for sh in shooters:
+            if G.has_node(c.agent_id) and G.has_node(sh.agent_id):
+                G.add_edge(c.agent_id, sh.agent_id,
+                           latency=comm["c2_to_shooter_delay"],
+                           bandwidth=comm["bandwidth_kbps"],
+                           link_type="c2_to_shooter")
+                G.add_edge(sh.agent_id, c.agent_id,
+                           latency=comm["c2_to_shooter_delay"],
+                           bandwidth=comm["bandwidth_kbps"],
+                           link_type="shooter_to_c2")
+
+    return G

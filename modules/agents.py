@@ -34,12 +34,31 @@ class SensorAgent(Agent):
         self.is_operational = True
         self.current_tracks = []
         self.label = params["label"]
+        # v0.7 신규 속성 (기본값 → 하위 호환)
+        self.role = params.get("role", "weapon_fc")
+        self.detectable_types = params.get("detectable_types")  # None=모든 유형
+        self.min_detection_altitude = params.get("min_detection_altitude", 0)
+        self.provides_cueing_to = params.get("provides_cueing_to")
+
+    def can_detect_type(self, threat_type):
+        """해당 위협 유형을 탐지할 수 있는지 확인 (v0.7)"""
+        if self.detectable_types is None:
+            return True
+        return threat_type in self.detectable_types
 
     def detect(self, threat, jamming_level=0.0, detection_factor=1.0):
         """탐지 확률 계산: P(detect) = max(0, 1-(d/R_max)²) × (1-jam) × detection_factor"""
         if not self.is_operational:
             return False
         if len(self.current_tracks) >= self.tracking_capacity:
+            return False
+
+        # v0.7: 위협 유형 필터 (detectable_types가 지정된 경우)
+        if not self.can_detect_type(threat.threat_type):
+            return False
+
+        # v0.7: 최소 탐지 고도 체크
+        if threat.altitude < self.min_detection_altitude:
             return False
 
         d = _slant_range(self.pos, 0, threat.pos, threat.altitude)
@@ -173,6 +192,7 @@ class ShooterAgent(Agent):
         self.max_range = params["max_range"]
         self.min_range = params["min_range"]
         self.max_altitude = params["max_altitude"]
+        self.min_altitude = params.get("min_altitude", 0)  # v0.7: 최소 교전 고도
         self.pk_table = dict(params["pk_table"])
         self.ammo_count = params["ammo_count"]
         self.initial_ammo = params["ammo_count"]
@@ -198,6 +218,9 @@ class ShooterAgent(Agent):
         if d < self.min_range or d > effective_max:
             return False
         if threat.altitude > self.max_altitude:
+            return False
+        # v0.7: 최소 교전 고도 체크 (THAAD, L-SAM ABM 등 고고도 전용)
+        if threat.altitude < self.min_altitude:
             return False
         base_pk = self.pk_table.get(threat.threat_type, 0)
         if base_pk <= 0:

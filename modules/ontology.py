@@ -8,7 +8,7 @@ Domain ontology for air defense system entity types and capabilities.
 
 from __future__ import annotations
 
-from typing import List, Literal, Optional
+from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -22,6 +22,11 @@ class DetectionCapability(BaseModel):
     detection_range: float = Field(gt=0, description="탐지 거리 (km)")
     tracking_capacity: int = Field(gt=0, description="동시 추적 용량")
     scan_rate: float = Field(gt=0, description="스캔 빈도 (초당)")
+    # v0.7 신규 필드 (기본값 → 하위 호환)
+    role: str = Field(default="weapon_fc", description="센서 역할 (early_warning/surveillance/local_surveillance/weapon_fc)")
+    detectable_types: Optional[List[str]] = Field(default=None, description="탐지 가능 위협 유형 (None=모든 유형)")
+    min_detection_altitude: float = Field(default=0, ge=0, description="최소 탐지 고도 (km)")
+    provides_cueing_to: Optional[List[str]] = Field(default=None, description="큐잉 제공 대상 C2 노드 타입")
 
 
 class C2Capability(BaseModel):
@@ -40,10 +45,13 @@ class EngagementCapability(BaseModel):
     max_range: float = Field(gt=0, description="최대 사거리 (km)")
     min_range: float = Field(ge=0, description="최소 사거리 (km)")
     max_altitude: float = Field(gt=0, description="최대 교전 고도 (km)")
+    min_altitude: float = Field(default=0, ge=0, description="최소 교전 고도 (km)")
     pk_table: dict = Field(description="위협 유형별 Pk {threat_type: pk}")
     ammo_count: int = Field(gt=0, description="탄약 수")
     reload_time: float = Field(ge=0, description="재장전 시간 (초)")
     engagement_time: float = Field(gt=0, description="교전 소요 시간 (초)")
+    # v0.7 신규 필드
+    intercept_method: Optional[str] = Field(default=None, description="요격 방식 (hit_to_kill/proximity_fuse/command_guidance)")
 
 
 class ThreatCapability(BaseModel):

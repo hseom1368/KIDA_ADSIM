@@ -21,7 +21,7 @@ class TestRegistryLoad:
 
     def test_load_all_sensors(self, registry):
         all_sensors = registry.all_sensor_types()
-        assert len(all_sensors) == 4  # EWR, PATRIOT_RADAR, MSAM_MFR, SHORAD_RADAR
+        assert len(all_sensors) == 7  # 기존 4 + v0.7 신규 3 (GREEN_PINE, FPS117, TPS880K)
 
     def test_load_c2_types(self, registry):
         ct = registry.get_c2_type("MCRC")
@@ -31,7 +31,7 @@ class TestRegistryLoad:
     def test_load_shooters(self, registry):
         st = registry.get_shooter_type("PATRIOT_PAC3")
         assert isinstance(st, ShooterType)
-        assert st.capability.max_range == 120
+        assert st.capability.max_range == 90  # v0.7: PAC-3 MSE 실사거리
         assert st.capability.pk_table["SRBM"] == 0.85
 
     def test_load_threats(self, registry):
@@ -86,9 +86,10 @@ class TestPkQueries:
 
     def test_prioritized_shooters_srbm(self, registry):
         prioritized = registry.get_prioritized_shooters("SRBM")
-        # PATRIOT_PAC3 (0.85) > CHEONGUNG2 (0.75)
-        assert prioritized[0].type_id == "PATRIOT_PAC3"
-        assert prioritized[1].type_id == "CHEONGUNG2"
+        # v0.7: THAAD (0.90) > PATRIOT_PAC3 (0.85) > LSAM_ABM (0.85) > CHEONGUNG2 (0.75)
+        assert prioritized[0].type_id == "THAAD"
+        assert "PATRIOT_PAC3" in [s.type_id for s in prioritized]
+        assert "CHEONGUNG2" in [s.type_id for s in prioritized]
 
     def test_prioritized_shooters_uas(self, registry):
         prioritized = registry.get_prioritized_shooters("UAS")

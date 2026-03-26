@@ -92,11 +92,13 @@ COMM_DEGRADATION = {
 # 2. 센서 파라미터
 # =============================================================================
 SENSOR_PARAMS = {
+    # ── 기존 센서 (무기체계 전용 레이더) ──
     "EWR": {
         "sensor_type": "EWR",
         "detection_range": 500,     # km
         "tracking_capacity": 100,
         "scan_rate": 1.0,           # 초당 스캔
+        "role": "weapon_fc",        # v0.7: 기존 호환 기본값
         "label": "EWR (그린파인급)",
     },
     "PATRIOT_RADAR": {
@@ -104,6 +106,7 @@ SENSOR_PARAMS = {
         "detection_range": 170,     # km (TBM 기준)
         "tracking_capacity": 100,
         "scan_rate": 1.0,
+        "role": "weapon_fc",
         "label": "PATRIOT Radar (AN/MPQ-65)",
     },
     "MSAM_MFR": {
@@ -111,6 +114,7 @@ SENSOR_PARAMS = {
         "detection_range": 100,     # km
         "tracking_capacity": 50,
         "scan_rate": 1.0,
+        "role": "weapon_fc",
         "label": "M-SAM MFR (천궁)",
     },
     "SHORAD_RADAR": {
@@ -118,7 +122,42 @@ SENSOR_PARAMS = {
         "detection_range": 17,      # km
         "tracking_capacity": 10,
         "scan_rate": 2.0,
+        "role": "weapon_fc",
         "label": "SHORAD Radar (TPS-830K)",
+    },
+    # ── v0.7 신규 센서 ──
+    "GREEN_PINE": {
+        "sensor_type": "GREEN_PINE",
+        "detection_range": 800,     # km (슈퍼 그린파인)
+        "tracking_capacity": 200,
+        "scan_rate": 0.1,           # 지속 감시 (비회전)
+        "role": "early_warning",    # 교전통제 불가, 큐잉만
+        "detectable_types": ["SRBM"],
+        "provides_cueing_to": ["KAMD_OPS"],
+        "min_detection_altitude": 0,
+        "label": "Green Pine/Super Green Pine (BMD EW)",
+    },
+    "FPS117": {
+        "sensor_type": "FPS117",
+        "detection_range": 470,     # km
+        "tracking_capacity": 100,
+        "scan_rate": 0.17,          # 6 RPM
+        "role": "surveillance",     # 영공 감시
+        "detectable_types": ["AIRCRAFT", "CRUISE_MISSILE"],
+        "provides_cueing_to": ["MCRC"],
+        "min_detection_altitude": 1.0,  # km (레이더 수평선 제한)
+        "label": "AN/FPS-117 Surveillance Radar",
+    },
+    "TPS880K": {
+        "sensor_type": "TPS880K",
+        "detection_range": 40,      # km (추정, X밴드 AESA)
+        "tracking_capacity": 30,
+        "scan_rate": 1.0,
+        "role": "local_surveillance",   # 야전 저고도
+        "detectable_types": ["AIRCRAFT", "CRUISE_MISSILE", "UAS"],
+        "provides_cueing_to": ["ARMY_LOCAL_AD"],
+        "min_detection_altitude": 0.05,  # km (50m, 저고도 특화)
+        "label": "TPS-880K Local AD Radar",
     },
 }
 
@@ -147,6 +186,28 @@ C2_PARAMS = {
         "auth_delay_killweb": (1, 3),
         "label": "EOC (교전작전센터)",
     },
+    # ── v0.7 신규 C2 노드 ──
+    "KAMD_OPS": {
+        "node_type": "KAMD_OPS",
+        "processing_capacity": 8,
+        "auth_delay_linear": (10, 60),      # 초 (탄도탄 전담)
+        "auth_delay_killweb": (1, 3),       # 초
+        "label": "KAMD 작전센터 (탄도탄 방어)",
+    },
+    "ARMY_LOCAL_AD": {
+        "node_type": "ARMY_LOCAL_AD",
+        "processing_capacity": 3,
+        "auth_delay_linear": (3, 10),       # 초 (육군 독자)
+        "auth_delay_killweb": (1, 3),       # 초
+        "label": "육군 국지방공 C2",
+    },
+    "IAOC": {
+        "node_type": "IAOC",
+        "processing_capacity": 10,
+        "auth_delay_linear": None,          # 선형 C2에서 사용 안함
+        "auth_delay_killweb": (1, 3),       # 초 (통합 자동화)
+        "label": "통합 방공작전센터 (IAOC)",
+    },
 }
 
 # =============================================================================
@@ -155,9 +216,10 @@ C2_PARAMS = {
 SHOOTER_PARAMS = {
     "PATRIOT_PAC3": {
         "weapon_type": "PATRIOT_PAC3",
-        "max_range": 120,           # km
+        "max_range": 90,            # km (PAC-3 MSE 실사거리)
         "min_range": 3,             # km
-        "max_altitude": 30,         # km
+        "max_altitude": 40,         # km (PAC-3 MSE 스펙 반영)
+        "min_altitude": 0,          # km
         "pk_table": {
             "SRBM": 0.85,
             "CRUISE_MISSILE": 0.80,
@@ -167,6 +229,7 @@ SHOOTER_PARAMS = {
         "ammo_count": 16,
         "reload_time": 1800,        # 초
         "engagement_time": 5,       # 초
+        "intercept_method": "hit_to_kill",
         "label": "PATRIOT PAC-3 MSE",
     },
     "CHEONGUNG2": {
@@ -174,6 +237,7 @@ SHOOTER_PARAMS = {
         "max_range": 40,
         "min_range": 1,
         "max_altitude": 20,
+        "min_altitude": 0,          # km
         "pk_table": {
             "SRBM": 0.75,
             "CRUISE_MISSILE": 0.80,
@@ -183,6 +247,7 @@ SHOOTER_PARAMS = {
         "ammo_count": 8,
         "reload_time": 1200,
         "engagement_time": 5,
+        "intercept_method": "proximity_fuse",
         "label": "천궁-II",
     },
     "BIHO": {
@@ -190,6 +255,7 @@ SHOOTER_PARAMS = {
         "max_range": 7,
         "min_range": 0.5,
         "max_altitude": 3,
+        "min_altitude": 0,          # km
         "pk_table": {
             "SRBM": 0.0,
             "CRUISE_MISSILE": 0.30,
@@ -199,6 +265,7 @@ SHOOTER_PARAMS = {
         "ammo_count": 502,          # 500(기관포) + 2(미사일)
         "reload_time": 5,
         "engagement_time": 3,
+        "intercept_method": "proximity_fuse",
         "label": "비호 복합",
     },
     "KF16": {
@@ -206,6 +273,7 @@ SHOOTER_PARAMS = {
         "max_range": 100,
         "min_range": 5,
         "max_altitude": 15,
+        "min_altitude": 0,          # km
         "pk_table": {
             "SRBM": 0.0,
             "CRUISE_MISSILE": 0.75,
@@ -215,7 +283,99 @@ SHOOTER_PARAMS = {
         "ammo_count": 6,
         "reload_time": float("inf"),    # 비행장 복귀 필요
         "engagement_time": 8,
+        "intercept_method": "air_to_air",
         "label": "KF-16 (CAP)",
+    },
+    # ── v0.7 신규 무기체계 ──
+    "THAAD": {
+        "weapon_type": "THAAD",
+        "max_range": 200,           # km
+        "min_range": 0,
+        "max_altitude": 150,        # km
+        "min_altitude": 40,         # km (적외선 탐색기 한계 — 고고도 전용)
+        "pk_table": {
+            "SRBM": 0.90,
+            "CRUISE_MISSILE": 0.0,
+            "AIRCRAFT": 0.0,
+            "UAS": 0.0,
+        },
+        "ammo_count": 48,           # 6 발사대 × 8발
+        "reload_time": 1800,
+        "engagement_time": 15,
+        "intercept_method": "hit_to_kill",
+        "label": "THAAD",
+    },
+    "LSAM_ABM": {
+        "weapon_type": "LSAM_ABM",
+        "max_range": 150,           # km (추정)
+        "min_range": 0,
+        "max_altitude": 60,         # km
+        "min_altitude": 40,         # km (적외선 탐색기 한계 — 고고도 전용)
+        "pk_table": {
+            "SRBM": 0.85,
+            "CRUISE_MISSILE": 0.0,
+            "AIRCRAFT": 0.0,
+            "UAS": 0.0,
+        },
+        "ammo_count": 8,            # 발사대 2대 × 4발 (추정)
+        "reload_time": 1800,
+        "engagement_time": 12,
+        "intercept_method": "hit_to_kill",
+        "label": "L-SAM ABM",
+    },
+    "LSAM_AAM": {
+        "weapon_type": "LSAM_AAM",
+        "max_range": 200,           # km (최소 150~300km)
+        "min_range": 10,
+        "max_altitude": 20,         # km
+        "min_altitude": 0,          # km
+        "pk_table": {
+            "SRBM": 0.0,
+            "CRUISE_MISSILE": 0.85,
+            "AIRCRAFT": 0.90,
+            "UAS": 0.50,
+        },
+        "ammo_count": 8,            # 발사대 2대 × 4발 (추정)
+        "reload_time": 1200,
+        "engagement_time": 10,
+        "intercept_method": "proximity_fuse",
+        "label": "L-SAM AAM",
+    },
+    "CHEONGUNG1": {
+        "weapon_type": "CHEONGUNG1",
+        "max_range": 40,
+        "min_range": 1,
+        "max_altitude": 15,         # km
+        "min_altitude": 0,          # km
+        "pk_table": {
+            "SRBM": 0.0,
+            "CRUISE_MISSILE": 0.80,
+            "AIRCRAFT": 0.85,
+            "UAS": 0.60,
+        },
+        "ammo_count": 32,           # 발사대 4대 × 8발
+        "reload_time": 600,
+        "engagement_time": 5,
+        "intercept_method": "proximity_fuse",
+        "label": "천궁-I (M-SAM)",
+    },
+    "CHUNMA": {
+        "weapon_type": "CHUNMA",
+        "max_range": 9,             # km 유효사거리
+        "min_range": 0.5,
+        "max_altitude": 5,          # km
+        "min_altitude": 0,          # km
+        "pk_table": {
+            "SRBM": 0.0,
+            "CRUISE_MISSILE": 0.40,
+            "AIRCRAFT": 0.65,
+            "UAS": 0.55,
+        },
+        "ammo_count": 8,            # 미사일 8발
+        "reload_time": 300,
+        "engagement_time": 3,
+        "intercept_method": "command_guidance",
+        "label": "천마 (K-SAM)",
     },
 }
 
@@ -564,19 +724,176 @@ EXPERIMENT_CONFIG = {
 # =============================================================================
 TOPOLOGY_RELATIONS = {
     "sensor_to_c2": {
+        # 기존 (DEFAULT_DEPLOYMENT용)
         "EWR": "MCRC",
         "PATRIOT_RADAR": "TOC_PAT",
         "MSAM_MFR": "TOC_MSAM",
         "SHORAD_RADAR": "TOC_SHORAD",      # fallback: TOC_MSAM
+        # v0.7 신규
+        "GREEN_PINE": "KAMD_OPS",
+        "FPS117": "MCRC",
+        "TPS880K": "ARMY_LOCAL_AD",
     },
     "shooter_to_c2": {
+        # 기존 (DEFAULT_DEPLOYMENT용)
         "PATRIOT_PAC3": "TOC_PAT",
         "CHEONGUNG2": "TOC_MSAM",
         "BIHO": "TOC_SHORAD",              # fallback: TOC_MSAM
         "KF16": "MCRC",
+        # v0.7 신규
+        "THAAD": "KAMD_OPS",
+        "LSAM_ABM": "KAMD_OPS",
+        "LSAM_AAM": "KAMD_OPS",
+        "CHEONGUNG1": "MCRC",
+        "CHUNMA": "ARMY_LOCAL_AD",
     },
     "c2_hierarchy": {
         "BATTALION_TOC": "MCRC",
         "EOC": None,                        # Kill Web에서는 계층 없음
+        # v0.7 신규
+        "KAMD_OPS": None,                   # 공군 미사일방어사령부 (MCRC와 독립)
+        "ARMY_LOCAL_AD": None,              # 육군 독자 (MCRC/KAMD와 독립)
+        "IAOC": None,                       # Kill Web 통합 C2
+    },
+}
+
+# =============================================================================
+# 11. 센서 큐잉 지연 파라미터 (v0.7)
+# =============================================================================
+SENSOR_CUEING_DELAYS = {
+    # 조기경보 탐지 → C2 경보 전파
+    "early_warning_to_c2": (2, 5),          # 초
+    # C2 → 무기체계 큐잉 명령
+    "c2_to_weapon_cueing_linear": (3, 10),  # 초 (Linear)
+    "c2_to_weapon_cueing_killweb": (1, 3),  # 초 (Kill Web)
+    # 무기체계 레이더 빔 지향 → 추적 획득
+    "weapon_radar_acquisition": (5, 15),    # 초
+    # 추적 → 화력통제 품질 달성
+    "track_to_fire_control": (2, 5),        # 초
+    # 교전 승인 → 요격미사일 발사
+    "fire_command_to_launch": (1, 5),       # 초
+}
+
+# =============================================================================
+# 12. 한반도 방어구역 정의 (v0.7)
+# =============================================================================
+SIMULATION_MAP = {
+    "x_range": (0, 200),        # km (서해~동해)
+    "y_range": (-400, 350),     # km (NK interior ~ Busan)
+    "dmz_y": 0,                 # DMZ 위치
+    "seoul_y": 50,              # Seoul
+    "osan_y": 60,               # Osan AB
+    "daejeon_y": 150,           # Daejeon
+    "seongju_y": 230,           # Seongju (THAAD)
+    "daegu_y": 250,             # Daegu
+    "busan_y": 330,             # Busan
+}
+
+DEFENSE_ZONES = {
+    "ZONE_A": {
+        "name": "Forward Corps Local AD",
+        "y_range": (0, 30),
+        "threats_facing": ["AIRCRAFT", "CRUISE_MISSILE", "UAS"],
+    },
+    "ZONE_B": {
+        "name": "Capital Area Multi-Layer AD",
+        "y_range": (30, 80),
+    },
+    "ZONE_C": {
+        "name": "Central Strategic Surveillance",
+        "y_range": (80, 180),
+    },
+    "ZONE_D": {
+        "name": "Southern High-Altitude Defense",
+        "y_range": (180, 350),
+    },
+}
+
+# =============================================================================
+# 13. 현실적 배치 (v0.7 — 한반도 방어구역 기반)
+# =============================================================================
+REALISTIC_DEPLOYMENT = {
+    "sensors": [
+        # 전략 조기경보 (Zone C/D)
+        {"type": "GREEN_PINE", "id": "GP_1", "pos": (100, 130)},
+        {"type": "GREEN_PINE", "id": "GP_2", "pos": (80, 250)},
+        # 방공관제 (전국 산악 고지대)
+        {"type": "FPS117", "id": "FPS_1", "pos": (50, 60)},
+        {"type": "FPS117", "id": "FPS_2", "pos": (150, 60)},
+        {"type": "FPS117", "id": "FPS_3", "pos": (100, 150)},
+        {"type": "FPS117", "id": "FPS_4", "pos": (100, 250)},
+        # 국지방공 (전방군단)
+        {"type": "TPS880K", "id": "TPS_1", "pos": (60, 15)},
+        {"type": "TPS880K", "id": "TPS_2", "pos": (100, 15)},
+        {"type": "TPS880K", "id": "TPS_3", "pos": (140, 15)},
+        # 무기체계 전용 레이더 (Zone B)
+        {"type": "PATRIOT_RADAR", "id": "PAT_RADAR_1", "pos": (80, 55)},
+        {"type": "PATRIOT_RADAR", "id": "PAT_RADAR_2", "pos": (120, 55)},
+        {"type": "MSAM_MFR", "id": "MFR_1", "pos": (70, 50)},
+        {"type": "MSAM_MFR", "id": "MFR_2", "pos": (130, 50)},
+        {"type": "SHORAD_RADAR", "id": "SH_RADAR_1", "pos": (100, 20)},
+    ],
+    "c2_nodes": {
+        "linear": [
+            # 공군 MCRC (오산)
+            {"type": "MCRC", "id": "MCRC_1", "pos": (100, 60)},
+            # 공군 KAMD작전센터 (오산, 별도 조직)
+            {"type": "KAMD_OPS", "id": "KAMD_OPS_1", "pos": (100, 60)},
+            # 육군 국지방공 C2
+            {"type": "ARMY_LOCAL_AD", "id": "ARMY_AD_1", "pos": (100, 20)},
+            # 대대 TOC
+            {"type": "BATTALION_TOC", "id": "TOC_PAT", "pos": (80, 55)},
+            {"type": "BATTALION_TOC", "id": "TOC_MSAM", "pos": (120, 50)},
+        ],
+        "killweb": [
+            # 통합 방공작전센터 (IAOC)
+            {"type": "IAOC", "id": "IAOC_1", "pos": (100, 60)},
+            # 분산 EOC
+            {"type": "EOC", "id": "EOC_1", "pos": (80, 55)},
+            {"type": "EOC", "id": "EOC_2", "pos": (120, 50)},
+            {"type": "EOC", "id": "EOC_3", "pos": (100, 20)},
+        ],
+    },
+    "shooters": [
+        # 고고도 (Zone D) — THAAD, L-SAM ABM
+        {"type": "THAAD", "id": "THAAD_1", "pos": (100, 230)},
+        {"type": "LSAM_ABM", "id": "LSAM_ABM_1", "pos": (80, 200)},
+        {"type": "LSAM_ABM", "id": "LSAM_ABM_2", "pos": (120, 200)},
+        # 중고도 (Zone B/C) — PAC-3, 천궁-II, L-SAM AAM
+        {"type": "PATRIOT_PAC3", "id": "PAT_1", "pos": (70, 55)},
+        {"type": "PATRIOT_PAC3", "id": "PAT_2", "pos": (130, 55)},
+        {"type": "CHEONGUNG2", "id": "MSAM_1", "pos": (60, 50)},
+        {"type": "CHEONGUNG2", "id": "MSAM_2", "pos": (140, 50)},
+        {"type": "LSAM_AAM", "id": "LSAM_AAM_1", "pos": (90, 180)},
+        {"type": "LSAM_AAM", "id": "LSAM_AAM_2", "pos": (110, 180)},
+        # 중저고도 (Zone B) — 천궁-I
+        {"type": "CHEONGUNG1", "id": "CG1_1", "pos": (80, 45)},
+        {"type": "CHEONGUNG1", "id": "CG1_2", "pos": (120, 45)},
+        # 저고도 (Zone A/B) — 천마, 비호, KF-16
+        {"type": "CHUNMA", "id": "CHUNMA_1", "pos": (60, 15)},
+        {"type": "CHUNMA", "id": "CHUNMA_2", "pos": (100, 15)},
+        {"type": "CHUNMA", "id": "CHUNMA_3", "pos": (140, 15)},
+        {"type": "BIHO", "id": "BIHO_1", "pos": (80, 10)},
+        {"type": "BIHO", "id": "BIHO_2", "pos": (120, 10)},
+        {"type": "KF16", "id": "KF16_1", "pos": (100, 60)},
+    ],
+    "defense_target": (100, 50),    # 수도권
+}
+
+# =============================================================================
+# 14. 위협 발사원점 (v0.7)
+# =============================================================================
+THREAT_ORIGINS = {
+    "DMZ_FRONT": {
+        "y": -10,
+        "threat_types": ["CRUISE_MISSILE", "UAS", "AIRCRAFT"],
+    },
+    "PYONGYANG_AREA": {
+        "y": -180,
+        "threat_types": ["SRBM", "CRUISE_MISSILE"],
+    },
+    "NORTH_INTERIOR": {
+        "y": -400,
+        "threat_types": ["SRBM"],
     },
 }

@@ -55,6 +55,11 @@ class EntityRegistry:
                     detection_range=params["detection_range"],
                     tracking_capacity=params["tracking_capacity"],
                     scan_rate=params["scan_rate"],
+                    # v0.7 신규 필드 (.get 기본값 → 하위 호환)
+                    role=params.get("role", "weapon_fc"),
+                    detectable_types=params.get("detectable_types"),
+                    min_detection_altitude=params.get("min_detection_altitude", 0),
+                    provides_cueing_to=params.get("provides_cueing_to"),
                 ),
                 reporting_c2_type=sensor_to_c2.get(type_id),
             )
@@ -83,10 +88,12 @@ class EntityRegistry:
                     max_range=params["max_range"],
                     min_range=params["min_range"],
                     max_altitude=params["max_altitude"],
+                    min_altitude=params.get("min_altitude", 0),
                     pk_table=dict(params["pk_table"]),
                     ammo_count=params["ammo_count"],
                     reload_time=params["reload_time"],
                     engagement_time=params["engagement_time"],
+                    intercept_method=params.get("intercept_method"),
                 ),
                 controlling_c2_type=shooter_to_c2.get(type_id),
             )
@@ -179,4 +186,23 @@ class EntityRegistry:
         return [
             ct for ct in self._c2_types.values()
             if ct.parent_c2_type == c2_type_id
+        ]
+
+    # ── v0.7 신규 쿼리 ──
+
+    def get_sensors_by_role(self, role: str) -> List[SensorType]:
+        """특정 역할의 센서 타입 반환"""
+        return [
+            st for st in self._sensors.values()
+            if st.capability.role == role
+        ]
+
+    def get_shooters_by_altitude_range(
+        self, min_alt: float, max_alt: float
+    ) -> List[ShooterType]:
+        """교전 고도 범위가 겹치는 사수 타입 반환"""
+        return [
+            st for st in self._shooters.values()
+            if st.capability.min_altitude <= max_alt
+            and st.capability.max_altitude >= min_alt
         ]
