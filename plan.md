@@ -1,325 +1,128 @@
-# v0.6 상세 구현 계획
+# v0.6.x Cesium 3D 시각화 통합 계획 + v0.7 Monte Carlo 계획
 
-> 작성일: 2026-03-12 (v0.5.1 기준 갱신: 2026-03-24)
-> 기반: v0.5.1 (146개 테스트 PASS, Pydantic 온톨로지 + Strategy 패턴 + Registry + CZML 내보내기 완료)
+> 작성일: 2026-03-24 (v0.5.1 기준)
+> 기반: v0.5.1 (146개 테스트 PASS) + cesium_integration_plan.md
 
 ---
 
-## 작업 개요
+## 버전 로드맵
 
-| # | 작업 | 파일 | 난이도 | 영향 범위 |
-|---|------|------|--------|-----------|
-| 1 | Monte Carlo 배치 실험 프레임워크 | model.py, notebook3 | **높음** | 실험 인프라 |
-| 2 | 통계 분석 모듈 | modules/stats.py (신규), notebook4 | **높음** | 분석 파이프라인 |
-| 3 | 최종 분석 보고서 구조 | notebook4, notebook6 (신규) | 중간 | 보고서 |
-| 4 | 인터랙티브 시각화 (선택) | modules/dashboard.py (신규) | 낮음 | 선택 기능 |
-| 5 | 테스트 추가 | tests/ | 중간 | 작업 1~2 검증 |
-| 6 | 문서 업데이트 | CHANGELOG.md, CLAUDE.md, README.md | 낮음 | 문서만 |
+| 버전 | 이름 | 핵심 산출물 | Task 수 |
+|------|------|-----------|---------|
+| **v0.6.1** | CZML Exporter 고도화 | `exporters.py` v2 + 스키마 검증 | 6 |
+| **v0.6.2** | CesiumJS 통합 뷰어 기반 | `cesium-viewer/` 프레임워크 | 4 |
+| **v0.6.3** | 3D 센서 볼륨 & 교전 시각화 | 레이더 볼륨, 요격 궤적, 폭발 | 4 |
+| **v0.6.4** | 성능 최적화 & HUD | Primitive API, Military HUD | 3 |
+| **v0.6.5** | 통합 검증 & 문서화 | E2E 테스트, 자동화, 문서 | 3 |
+| **v0.7** | Monte Carlo 통계 분석 | (아래 별도 섹션) | 6 |
+
+**실행 순서**: v0.6.1 → v0.6.2 → v0.6.3 → v0.6.4 → v0.6.5 → v0.7
+**핵심 불변 조건**: 시뮬레이션 로직(model.py, agents.py) 변경 금지. exporters.py + 프론트엔드만 수정.
+**상세 Spec**: `cesium_integration_plan.md` 참조 (정규 스키마, Acceptance Criteria 등)
+
+---
+
+## v0.6.1 — CZML Exporter 고도화 (P1)
+
+**범위**: Python 백엔드만 변경
+**세션**: 1~2회 (T0~T3 / T4~T5)
+
+| Task | 내용 | 변경 파일 |
+|------|------|----------|
+| P1-T0 | 스키마 준수 검증 테스트 (TDD 진입점) | `tests/test_schema_compliance.py` 신규 |
+| P1-T1 | 위협 궤적 보간 (LAGRANGE/LINEAR) | `modules/exporters.py` |
+| P1-T2 | 교전 이벤트 CZML 패킷 | `modules/exporters.py` |
+| P1-T3 | C2 토폴로지 CZML (polyline) | `modules/exporters.py` |
+| P1-T4 | `CesiumConfigExporter` (viewer_config.json) | `modules/exporters.py` |
+| P1-T5 | 통합 테스트 + CZML 출력 검증 | `tests/test_exporters.py` 확장 |
+
+**완료 기준**: 14개 CZML+JSON 내보내기 성공, 기존 146+신규 ~10개 테스트 PASS
+
+---
+
+## v0.6.2 — CesiumJS 통합 뷰어 기반 (P2)
+
+**범위**: 프론트엔드 신규 생성, Python 변경 없음
+**세션**: 1~2회 (T1+T2 / T3+T4)
+**선행**: v0.6.1 완료
+
+| Task | 내용 | 생성 파일 |
+|------|------|----------|
+| P2-T1 | 프로젝트 구조 + 기본 뷰어 | `cesium-viewer/index.html`, `js/app.js` |
+| P2-T2 | CZML 로더 + 시간 컨트롤 | `js/czml-loader.js` |
+| P2-T3 | 아키텍처 비교 모드 (토글/Split) | `js/app.js` 확장 |
+| P2-T4 | 시나리오 선택 UI | `index.html`, `js/app.js` |
+
+**완료 기준**: localhost에서 뷰어 → CZML 로드 → 위협 궤적 3D + 시간 제어 + 비교 모드
+
+---
+
+## v0.6.3 — 3D 센서 볼륨 & 교전 시각화 (P3)
+
+**범위**: 프론트엔드 JS 모듈, Python 변경 없음
+**세션**: **2회** — 세션1: T1(레이더)+T2(요격) / 세션2: T3(폭발)+T4(토폴로지)
+**선행**: v0.6.2 완료
+
+| Task | 내용 | 생성 파일 |
+|------|------|----------|
+| P3-T1 | 3D 구면 부채꼴 레이더 볼륨 | `js/radar-volumes.js` |
+| P3-T2 | 요격 미사일 궤적 시각화 | `js/engagement-viz.js` |
+| P3-T3 | ParticleSystem 폭발 이펙트 | `js/engagement-viz.js` 확장 |
+| P3-T4 | C2 토폴로지 3D 렌더링 | `js/topology-viz.js` |
+
+**완료 기준**: 3D 레이더 볼륨 + 요격 궤적 + 폭발/실패 이펙트 + 토폴로지 연결선
+
+---
+
+## v0.6.4 — 성능 최적화 & Military HUD (P4)
+
+**범위**: 프론트엔드 최적화 + HUD UI
+**세션**: 1회
+**선행**: v0.6.3 완료
+
+| Task | 내용 | 파일 |
+|------|------|------|
+| P4-T1 | Primitive API 마이그레이션 | `js/performance.js` |
+| P4-T2 | Military HUD 패널 | `js/hud-panel.js`, `css/hud.css` |
+| P4-T3 | requestRenderMode 성능 제어 | `js/app.js` |
+
+**완료 기준**: 50+ 위협 60fps, HUD 실시간 갱신, 일시정지 시 CPU 절감
+
+---
+
+## v0.6.5 — 통합 검증 & 문서화 (P5)
+
+**범위**: 테스트, 자동화, 문서
+**세션**: 1회
+**선행**: v0.6.4 완료
+
+| Task | 내용 | 파일 |
+|------|------|------|
+| P5-T1 | E2E 통합 테스트 | `tests/test_e2e_cesium.py` |
+| P5-T2 | 자동화 스크립트 | `run_cesium.py` |
+| P5-T3 | 문서 갱신 | `CHANGELOG.md`, `CLAUDE.md`, `README.md` |
+
+**완료 기준**: `python run_cesium.py --serve` 단일 명령, ~181개 테스트 PASS, SSOT 준수
+
+---
+
+## v0.7 — Monte Carlo 통계 분석 (기존 v0.6 계획 이동)
+
+> 아래 내용은 기존 v0.6 계획을 v0.7로 이동한 것임
+
+### 작업 개요
+
+| # | 작업 | 파일 | 난이도 |
+|---|------|------|--------|
+| 1 | Monte Carlo 배치 실험 프레임워크 | model.py, notebook3 | **높음** |
+| 2 | 통계 분석 모듈 | modules/stats.py (신규) | **높음** |
+| 3 | 최종 분석 보고서 | notebook6 (신규) | 중간 |
+| 4 | 인터랙티브 시각화 (선택) | modules/dashboard.py | 낮음 |
+| 5 | 테스트 추가 | tests/ | 중간 |
+| 6 | 문서 업데이트 | CHANGELOG, CLAUDE.md, README | 낮음 |
 
 **실행 순서**: 1 → 2 → 3 → 5 → 6 (작업 4는 선택)
-
----
-
-## 작업 1: Monte Carlo 300회 배치 실험 프레임워크
-
-### 목표
-- 전 시나리오(S1~S5, EW 3단계 포함 7개) × 2 아키텍처 × 300 시드 = **4,200회** 시뮬레이션
-- 수렴 분석으로 300회 충분성 검증
-- 결과를 CSV/Parquet로 저장하여 재현 가능한 분석 기반 구축
-
-### 현재 상태
-- `notebook3`에서 단일 시나리오 × 2 아키텍처 × 300회 실행 가능
-- 그러나 전 시나리오 일괄 실행 + 결과 저장 + 수렴 분석 프레임워크 부재
-
-### 설계
-
-#### 1-1. 배치 실험 실행기
-
-```python
-# notebook3 또는 별도 스크립트에서 실행
-import itertools
-import pandas as pd
-from modules.model import AirDefenseModel
-
-SCENARIOS = [
-    "scenario_1_saturation",
-    "scenario_2_mixed",
-    "scenario_3_ew_light",
-    "scenario_3_ew_moderate",
-    "scenario_3_ew_heavy",
-    "scenario_4_sequential",
-    "scenario_5_node_kill",
-]
-ARCHITECTURES = ["linear", "killweb"]
-N_SEEDS = 300
-
-results = []
-for scenario, arch in itertools.product(SCENARIOS, ARCHITECTURES):
-    for seed in range(N_SEEDS):
-        m = AirDefenseModel(
-            architecture=arch,
-            scenario=scenario,
-            seed=seed,
-            record_snapshots=False,  # 메모리 절약
-        )
-        r = m.run_full()
-        row = {
-            "scenario": scenario,
-            "architecture": arch,
-            "seed": seed,
-            "leaker_rate": r["metrics"]["leaker_rate"],
-            "success_rate": r["metrics"]["engagement_success_rate"],
-            "s2s_mean": r["metrics"]["sensor_to_shooter_time"]["mean"],
-            "multi_engagement_rate": r["metrics"]["multi_engagement_rate"],
-            "ammo_efficiency": r["metrics"]["ammo_efficiency"],
-            "defense_coverage": r["metrics"]["defense_coverage"],
-            "system_resilience": r["metrics"]["system_resilience"],
-            # ... 12개 메트릭 전부 수집
-        }
-        results.append(row)
-
-df = pd.DataFrame(results)
-df.to_csv("results/monte_carlo_v06.csv", index=False)
-```
-
-#### 1-2. 수렴 분석
-
-```python
-def convergence_analysis(df, metric, window_sizes=[50, 100, 150, 200, 250, 300]):
-    """누적 평균의 안정성으로 300회 충분성 검증"""
-    for scenario in df["scenario"].unique():
-        for arch in df["architecture"].unique():
-            subset = df[(df.scenario == scenario) & (df.architecture == arch)]
-            cumulative_means = [subset[metric].iloc[:w].mean() for w in window_sizes]
-            # 최종 50회 누적 평균 변화율 < 1% → 수렴 판정
-```
-
-#### 1-3. 병렬화 (선택)
-
-```python
-# multiprocessing Pool 활용
-from multiprocessing import Pool
-
-def run_single(args):
-    scenario, arch, seed = args
-    m = AirDefenseModel(architecture=arch, scenario=scenario, seed=seed)
-    return m.run_full()["metrics"]
-
-with Pool(processes=4) as pool:
-    results = pool.map(run_single, all_combinations)
-```
-
-### 결과 저장 구조
-
-```
-results/
-├── monte_carlo_v06.csv          # 전체 원시 데이터 (4,200행 × 12열)
-├── convergence_analysis.csv     # 수렴 분석 결과
-└── summary_statistics.csv       # 시나리오별 요약 통계
-```
-
-### 예상 실행 시간
-- 단일 시뮬레이션: ~0.5초 (v0.5 기준, record_snapshots=False)
-- 4,200회: ~35분 (직렬) / ~10분 (4코어 병렬)
-
----
-
-## 작업 2: 통계 분석 모듈
-
-### 목표
-- 아키텍처 간 성능 차이의 **통계적 유의성** 검정
-- **효과 크기** (Cohen's d) 산출로 실질적 의미 판단
-- **신뢰 구간** 95% CI로 결과 불확실성 정량화
-
-### 설계: `modules/stats.py` (신규)
-
-```python
-"""통계 분석 모듈 — v0.6 Monte Carlo 결과 분석"""
-
-import numpy as np
-import pandas as pd
-from scipy import stats
-
-class MonteCarloAnalyzer:
-    """Monte Carlo 실험 결과 통계 분석기"""
-
-    def __init__(self, df: pd.DataFrame):
-        self.df = df
-
-    def compare_architectures(self, scenario, metric):
-        """두 아키텍처 간 성능 비교 (통계 검정 + 효과 크기)"""
-        linear = self.df[(self.df.scenario == scenario) & (self.df.architecture == "linear")][metric]
-        killweb = self.df[(self.df.scenario == scenario) & (self.df.architecture == "killweb")][metric]
-
-        result = {
-            "scenario": scenario,
-            "metric": metric,
-            "linear_mean": linear.mean(),
-            "linear_std": linear.std(),
-            "killweb_mean": killweb.mean(),
-            "killweb_std": killweb.std(),
-        }
-
-        # 1. 정규성 검정 (Shapiro-Wilk)
-        _, p_normal_l = stats.shapiro(linear)
-        _, p_normal_k = stats.shapiro(killweb)
-        result["normal_linear"] = p_normal_l > 0.05
-        result["normal_killweb"] = p_normal_k > 0.05
-
-        # 2. 등분산 검정 (Levene)
-        _, p_levene = stats.levene(linear, killweb)
-        result["equal_variance"] = p_levene > 0.05
-
-        # 3. 모수 검정 (독립 표본 t-test, Welch's t-test)
-        t_stat, p_ttest = stats.ttest_ind(linear, killweb, equal_var=result["equal_variance"])
-        result["t_statistic"] = t_stat
-        result["p_value_ttest"] = p_ttest
-
-        # 4. 비모수 검정 (Mann-Whitney U test)
-        u_stat, p_mann = stats.mannwhitneyu(linear, killweb, alternative='two-sided')
-        result["u_statistic"] = u_stat
-        result["p_value_mann_whitney"] = p_mann
-
-        # 5. 효과 크기 (Cohen's d)
-        pooled_std = np.sqrt((linear.std()**2 + killweb.std()**2) / 2)
-        cohens_d = (linear.mean() - killweb.mean()) / pooled_std if pooled_std > 0 else 0
-        result["cohens_d"] = cohens_d
-        result["effect_size"] = self._interpret_cohens_d(cohens_d)
-
-        # 6. 95% 신뢰 구간 (차이의 CI)
-        diff = linear.values - killweb.values[:len(linear)]
-        ci_low, ci_high = stats.t.interval(0.95, len(diff)-1, loc=diff.mean(), scale=stats.sem(diff))
-        result["ci_95_low"] = ci_low
-        result["ci_95_high"] = ci_high
-
-        return result
-
-    def full_analysis(self, metrics=None):
-        """전 시나리오 × 전 메트릭 종합 분석"""
-        if metrics is None:
-            metrics = ["leaker_rate", "success_rate", "s2s_mean", "multi_engagement_rate"]
-        results = []
-        for scenario in self.df["scenario"].unique():
-            for metric in metrics:
-                results.append(self.compare_architectures(scenario, metric))
-        return pd.DataFrame(results)
-
-    @staticmethod
-    def _interpret_cohens_d(d):
-        d = abs(d)
-        if d < 0.2:
-            return "negligible"
-        elif d < 0.5:
-            return "small"
-        elif d < 0.8:
-            return "medium"
-        else:
-            return "large"
-```
-
-### 분석 항목 체크리스트
-
-| 분석 | 방법 | 목적 |
-|------|------|------|
-| 정규성 검정 | Shapiro-Wilk | 모수/비모수 검정 선택 |
-| 평균 차이 검정 | Welch's t-test | 아키텍처 간 유의차 |
-| 비모수 검정 | Mann-Whitney U | 비정규 분포 시 보완 |
-| 효과 크기 | Cohen's d | 실질적 차이 크기 |
-| 신뢰 구간 | 95% CI (부트스트랩) | 추정 불확실성 |
-| 수렴 분석 | 누적 평균 안정성 | 300회 충분성 |
-| 다중 비교 보정 | Bonferroni/FDR | 7개 시나리오 동시 검정 보정 |
-
----
-
-## 작업 3: 최종 분석 보고서 구조
-
-### 보고서 구성 (notebook4 확장 또는 notebook6 신규)
-
-1. **서론**: 연구 목적, 비교 대상, 시뮬레이션 설계
-2. **실험 설계**: Monte Carlo 방법론, 파라미터, 시나리오 설명
-3. **수렴 분석**: 300회 충분성 그래프
-4. **시나리오별 결과**:
-   - 기술 통계 (평균, 표준편차, 중앙값, IQR)
-   - 박스플롯 / 바이올린 플롯
-   - 통계 검정 결과표 (p-value, Cohen's d, 95% CI)
-5. **종합 비교**:
-   - 히트맵: 시나리오 × 메트릭 × 아키텍처
-   - 레이더 차트: 다차원 성능 비교
-6. **정책 제언**:
-   - Kill Web 도입 시 기대 효과 정량화
-   - 시나리오별 최적 아키텍처 권장
-   - 한계점 및 향후 연구 과제
-
-### 시각화 계획
-
-| 차트 유형 | 내용 | 라이브러리 |
-|-----------|------|------------|
-| 박스플롯 | 300회 메트릭 분포 비교 | seaborn |
-| 바이올린 플롯 | 분포 형태 비교 | seaborn |
-| 히트맵 | 시나리오 × 메트릭 효과 크기 | matplotlib/seaborn |
-| 레이더 차트 | 다차원 성능 종합 비교 | matplotlib |
-| 수렴 곡선 | 누적 평균 안정성 | matplotlib |
-| 포레스트 플롯 | 시나리오별 효과 크기 + CI | matplotlib |
-
----
-
-## 작업 4: 인터랙티브 시각화 (선택)
-
-### 목표
-- plotly/dash 기반 웹 대시보드
-- 시나리오, 아키텍처, 메트릭 필터링
-- 개별 시뮬레이션 drill-down
-
-### 우선순위
-- v0.6의 핵심 목표는 **통계 분석 보고서**이므로 인터랙티브 시각화는 **선택 사항**
-- 시간 여유 시 구현, 아니면 v0.7로 연기
-
----
-
-## 작업 5: 테스트 추가
-
-### 신규 테스트 (예상)
-
-#### `tests/test_stats.py` (8~10개)
-```python
-class TestMonteCarloAnalyzer:
-    def test_compare_architectures_returns_all_fields(self):
-    def test_cohens_d_interpretation(self):
-    def test_full_analysis_covers_all_scenarios(self):
-    def test_convergence_analysis(self):
-
-class TestBatchExperiment:
-    def test_single_scenario_batch_runs(self):
-    def test_results_dataframe_structure(self):
-    def test_reproducibility_with_same_seeds(self):
-```
-
-### 테스트 목표: 기존 146개 + 신규 ~10개 = **~156개**
-
----
-
-## 리스크 및 완화 전략
-
-| 리스크 | 영향 | 완화 |
-|--------|------|------|
-| 4,200회 배치 실행 시간 | 직렬 35분+ | multiprocessing 병렬화, 중간 저장 |
-| 메모리 사용량 | DataFrame 대형화 | record_snapshots=False, 청크 처리 |
-| 비정규 분포 메트릭 | 모수 검정 부적절 | Mann-Whitney U 비모수 검정 병행 |
-| 다중 비교 문제 | 유형 I 오류 증가 | Bonferroni 보정, FDR 적용 |
-| 시뮬레이션 재현성 | 시드 관리 실수 | 시드 0~299 고정, CSV 원시 데이터 보관 |
-
----
-
-## 검증 체크리스트
-
-- [ ] 작업 1 후: S1 × 2 아키텍처 × 10회 파일럿 배치 정상 완료
-- [ ] 작업 1 후: CSV 저장/로드 정상 확인
-- [ ] 작업 1 후: 수렴 분석 그래프 생성
-- [ ] 작업 2 후: `MonteCarloAnalyzer.compare_architectures()` 정상 동작
-- [ ] 작업 2 후: Cohen's d, 95% CI, p-value 계산 검증
-- [ ] 작업 3 후: 전 시나리오 보고서 시각화 정상 렌더링
-- [ ] 작업 5 후: `python -m pytest tests/ -v` → ~156개 PASS
-- [ ] 최종: 4,200회 전체 배치 실행 완료 + 결과 보고서 생성
+**상세 설계**: 기존 plan.md v0.6 내용과 동일 (Monte Carlo 4,200회, stats.py, 보고서)
 
 ---
 

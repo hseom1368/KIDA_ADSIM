@@ -5,6 +5,54 @@
 
 ---
 
+## [v0.6.5] — 2026-03-25
+
+### 변경사항
+
+#### v0.6.1 — CZML Exporter 고도화 (Python Backend)
+- `modules/exporters.py` 확장 (+381줄)
+  - 위협 궤적 보간 (LAGRANGE/LINEAR, 유형별 자동 적용)
+  - 교전 이벤트 CZML 패킷 (사수→위협 polyline + 명중/실패 효과 마커)
+  - C2 토폴로지 연결선 패킷 (선형=흰색 실선, 킬웹=파랑 점선)
+  - `CesiumConfigExporter` 클래스 (viewer_config.json 7개 섹션)
+  - `topology_edges`/`architecture` optional 파라미터 (하위 호환)
+- `tests/test_schema_compliance.py` 신규 (19개 테스트)
+- `tests/test_exporters.py` 확장 (+10개 통합 테스트)
+
+#### v0.6.2 — CesiumJS 통합 뷰어 기반
+- `cesium-viewer/` 디렉토리 신규 생성
+  - `index.html` — CesiumJS 1.130 CDN + Military HUD 레이아웃
+  - `js/czml-loader.js` — CZML 로더 + 시간 컨트롤 (재생/속도/스크러빙)
+  - `js/app.js` — 메인 앱 (비교 모드, 시나리오 선택, 카메라 프리셋)
+  - `css/hud.css` — Military HUD 스타일 (녹색 콘솔 테마)
+
+#### v0.6.3 — 3D 센서 볼륨 & 교전 시각화
+- `js/radar-volumes.js` — EllipsoidGeometry Primitive API 레이더 볼륨 (방위각 슬라이더)
+- `js/engagement-viz.js` — 요격 미사일 궤적 (부스터+곡선유도) + ParticleSystem 폭발 이펙트
+- `js/topology-viz.js` — link_type별 색상 구분 토폴로지 시각화
+
+#### v0.6.4 — 성능 최적화 & HUD
+- `js/performance.js` — LabelCollection/PointPrimitiveCollection 정적 라벨
+- `js/hud-panel.js` — 실시간 방어 현황 + 교전 카운터 + 스크롤 로그
+- requestRenderMode — 일시정지 시 CPU 절약
+
+#### v0.6.5 — 통합 검증 & 문서화
+- `tests/test_e2e_cesium.py` — E2E 통합 테스트 7개 (전 파이프라인 검증)
+- `run_cesium.py` — 시뮬레이션→내보내기→웹서버 자동화 스크립트
+- CHANGELOG.md, CLAUDE.md 갱신
+
+### 테스트 현황
+- 전체: 182개 PASS (기존 146 + v0.6 신규 36)
+- 시뮬레이션 기준선 불변: linear=35.6%, killweb=22.2%
+- SSOT 준수: 프론트엔드 JS에 Math.random()/충돌 판정 코드 0건
+
+### 알려진 문제
+- Cesium Ion 토큰 하드코딩 (환경변수 분리 권장)
+- 한글 폰트 미지원 (matplotlib + Cesium 양쪽)
+- ParticleSystem fire.png 미사용 (캔버스 생성 스프라이트로 대체)
+
+---
+
 ## [v0.5.1] — 2026-03-23
 
 ### 변경사항
