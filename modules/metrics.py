@@ -60,6 +60,13 @@ class MetricsCollector:
         self.multi_engagements = []     # [(threat_id, time, num_shooters)]
         self.total_multi_engagement_count = 0
 
+        # v0.7.1: 신규 메트릭 추적
+        self.duplicate_engagements = []      # [(threat_id, c2_axis1, c2_axis2)]
+        self.expensive_asset_uses = []       # [(shooter_type, threat_actual_type, cost_ratio)]
+        self.threat_identifications = []     # [(threat_id, identified_type, actual_type)]
+        self.layer_attempts = defaultdict(list)  # {threat_id: [(layer_name, time, success)]}
+        self.inter_c2_delays = []            # [(src_c2, dst_c2, delay)]
+
     def record_detection(self, threat_id, time):
         """탐지 기록"""
         if threat_id not in self.detection_times:
@@ -115,6 +122,28 @@ class MetricsCollector:
         """교전 재개 시점 기록"""
         self.recovery_time = time
 
+    # ── v0.7.1 신규 record 메서드 ──
+
+    def record_duplicate_engagement(self, threat_id, c2_axis1, c2_axis2):
+        """중복교전 기록 (동일 표적에 2개 C2축 교전)"""
+        self.duplicate_engagements.append((threat_id, c2_axis1, c2_axis2))
+
+    def record_threat_identification(self, threat_id, identified_type, actual_type):
+        """위협 식별 결과 기록"""
+        self.threat_identifications.append((threat_id, identified_type, actual_type))
+
+    def record_expensive_asset_use(self, shooter_type, threat_actual_type, cost_ratio):
+        """고가 자산 소모 기록 (PAC-3/THAAD가 저가 위협에 사용)"""
+        self.expensive_asset_uses.append((shooter_type, threat_actual_type, cost_ratio))
+
+    def record_layer_attempt(self, threat_id, layer_name, time, success):
+        """교전 계층 시도 기록"""
+        self.layer_attempts[threat_id].append((layer_name, time, success))
+
+    def record_inter_c2_delay(self, src_c2, dst_c2, delay):
+        """C2 간 정보 전달 지연 기록"""
+        self.inter_c2_delays.append((src_c2, dst_c2, delay))
+
     # =========================================================================
     # 10대 메트릭 계산
     # =========================================================================
@@ -134,6 +163,13 @@ class MetricsCollector:
             "node_loss_recovery_time": self.metric_10_recovery_time(),
             "multi_engagement_rate": self.metric_11_multi_engagement_rate(),
             "avg_shooters_per_multi_engagement": self.metric_12_avg_shooters(),
+            # v0.7.1 신규 메트릭
+            "duplicate_engagement_rate": self.metric_13_duplicate_engagement_rate(),
+            "expensive_asset_waste_rate": self.metric_14_expensive_asset_waste(),
+            "threat_id_accuracy": self.metric_15_threat_id_accuracy(),
+            "multi_layer_intercept_opportunities": self.metric_16_layer_opportunities(),
+            "engagement_allocation_efficiency": self.metric_4_assignment_efficiency(),
+            "inter_c2_info_delay": self.metric_18_inter_c2_delay(),
         }
 
     def metric_1_sensor_to_shooter(self):
@@ -248,6 +284,42 @@ class MetricsCollector:
         if not self.multi_engagements:
             return 0.0
         return sum(n for _, _, n in self.multi_engagements) / len(self.multi_engagements)
+
+    # ── v0.7.1 신규 메트릭 ──
+
+    def metric_13_duplicate_engagement_rate(self):
+        """메트릭 13: 중복교전율 (%) — 동일 표적에 2+ C2축 교전"""
+        if self.threats_engaged == 0:
+            return 0.0
+        return (len(self.duplicate_engagements) / self.threats_engaged) * 100
+
+    def metric_14_expensive_asset_waste(self):
+        """메트릭 14: 고가자산 소모율 (%) — PAC-3/THAAD가 저가 위협에 소모"""
+        if not self.expensive_asset_uses:
+            return 0.0
+        wasted = sum(1 for _, _, cr in self.expensive_asset_uses if cr < 0.1)
+        return (wasted / max(self.total_shots, 1)) * 100
+
+    def metric_15_threat_id_accuracy(self):
+        """메트릭 15: 위협식별 정확도 (%)"""
+        if not self.threat_identifications:
+            return 100.0
+        correct = sum(1 for _, ident, actual in self.threat_identifications
+                      if ident == actual)
+        return (correct / len(self.threat_identifications)) * 100
+
+    def metric_16_layer_opportunities(self):
+        """메트릭 16: 위협당 평균 다층 요격 시도 횟수"""
+        if not self.layer_attempts:
+            return 0.0
+        total = sum(len(v) for v in self.layer_attempts.values())
+        return total / len(self.layer_attempts)
+
+    def metric_18_inter_c2_delay(self):
+        """메트릭 18: C2 간 정보 전달 평균 지연시간 (초)"""
+        if not self.inter_c2_delays:
+            return 0.0
+        return sum(d for _, _, d in self.inter_c2_delays) / len(self.inter_c2_delays)
 
     def to_dict(self):
         """결과를 딕셔너리로 반환 (DataFrame 변환용)"""

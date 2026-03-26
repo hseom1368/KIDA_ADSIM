@@ -115,6 +115,8 @@ class EntityRegistry:
                     altitude=params["altitude"],
                     rcs=params["rcs"],
                     maneuvering=params["maneuvering"],
+                    radar_signature=params.get("radar_signature"),
+                    cost_ratio=params.get("cost_ratio", 1.0),
                 ),
                 flight_profile=flight_profile,
             )

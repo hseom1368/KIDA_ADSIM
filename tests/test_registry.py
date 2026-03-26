@@ -42,7 +42,7 @@ class TestRegistryLoad:
 
     def test_load_all_threat_types(self, registry):
         all_threats = registry.all_threat_types()
-        assert len(all_threats) == 4
+        assert len(all_threats) == 5  # 기존 4 + v0.7.1 MLRS_GUIDED
 
     def test_missing_type_raises(self, registry):
         with pytest.raises(KeyError):

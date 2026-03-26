@@ -19,9 +19,12 @@ import networkx as nx
 from .config import (
     COMM_PARAMS, ENGAGEMENT_POLICY, COP_CONFIG,
     ADAPTIVE_ENGAGEMENT, COMM_DEGRADATION,
+    ENGAGEMENT_LAYERS, THREAT_LAYER_MAP,
+    THREAT_ID_CONFIG, C2_AXIS_CONTROL, THREAT_C2_AXIS,
 )
 from .network import (
     build_linear_topology, build_killweb_topology,
+    build_realistic_linear_topology, build_realistic_killweb_topology,
 )
 
 if TYPE_CHECKING:
@@ -85,6 +88,28 @@ class ArchitectureStrategy(ABC):
         """통신 중복 경로 완화 계수 (Gemini #7)"""
         return 1.0
 
+    # ── v0.7.1 신규 메서드 (기본 구현 제공 → 하위 호환) ──
+
+    def get_engagement_layer_shooters(
+        self, model: AirDefenseModel, threat: ThreatAgent,
+    ) -> list:
+        """위협의 현재 고도/유형에 맞는 교전 가능 사수 목록 (다층 교전)"""
+        # 기본: 전체 사수 (기존 동작)
+        return [s for s in model.shooter_agents if s.can_engage(threat)]
+
+    def identify_threat_type(
+        self, model: AirDefenseModel, threat: ThreatAgent,
+        sensors_tracking: int = 1,
+    ) -> str:
+        """위협 유형 식별 (기본: 실제 유형 반환)"""
+        return threat.actual_type
+
+    def check_duplicate_engagement(
+        self, model: AirDefenseModel, threat: ThreatAgent,
+    ) -> bool:
+        """중복교전 여부 확인 (True=중복, False=교전 가능). 기본: 교전 가능"""
+        return False
+
 
 # =============================================================================
 # 선형 C2 전략
@@ -94,11 +119,33 @@ class LinearC2Strategy(ArchitectureStrategy):
     """선형 C2 아키텍처: 계층적 킬체인, 고정 사수 매칭"""
 
     def build_topology(self, sensors, c2_nodes, shooters) -> nx.DiGraph:
+        # v0.7.1: 3축 C2 노드 존재 시 현실적 토폴로지 사용
+        c2_types = {c.node_type for c in c2_nodes}
+        if "KAMD_OPS" in c2_types or "ARMY_LOCAL_AD" in c2_types:
+            return build_realistic_linear_topology(sensors, c2_nodes, shooters)
         return build_linear_topology(sensors, c2_nodes, shooters)
 
+    def _get_axis_c2(self, model: AirDefenseModel, threat: ThreatAgent):
+        """v0.7.1: 위협 유형에 맞는 C2 축의 운용 가능한 C2 노드 반환"""
+        target_c2_type = THREAT_C2_AXIS.get(threat.identified_type)
+        if target_c2_type:
+            axis_c2 = [
+                c for c in model.c2_agents
+                if c.is_operational and c.node_type == target_c2_type
+            ]
+            if axis_c2:
+                return axis_c2
+        # fallback: 기존 동작 (모든 C2)
+        return [c for c in model.c2_agents if c.is_operational]
+
     def run_killchain(self, model: AirDefenseModel, threat: ThreatAgent) -> Generator:
-        """선형 킬체인: 센서→C2 → MCRC 큐 대기 → 위협평가 → 승인 → 사수 지정"""
+        """선형 킬체인: 센서→C2 → 축별 C2 큐 대기 → 위협평가 → 승인 → 사수 지정"""
         threat_id = threat.unique_id
+
+        # v0.7.1: 위협 식별 (단일 센서 기반 → 오인식 가능)
+        threat.identified_type = self.identify_threat_type(model, threat, sensors_tracking=1)
+        model.metrics.record_threat_identification(
+            threat_id, threat.identified_type, threat.actual_type)
 
         # 1. 센서 → C2 보고 전달
         delay = model.comm_channel.get_delay("sensor_to_c2")
@@ -110,8 +157,8 @@ class LinearC2Strategy(ArchitectureStrategy):
             model.killchain.log_event(threat_id, "report_lost", "통신 두절")
             return
 
-        # 2. C2 체인 순차 처리
-        operational_c2 = [c for c in model.c2_agents if c.is_operational]
+        # 2. C2 체인 순차 처리 (v0.7.1: 축별 C2 라우팅)
+        operational_c2 = self._get_axis_c2(model, threat)
         for c2 in operational_c2:
             if c2.agent_id not in model.c2_resources:
                 continue
@@ -129,8 +176,8 @@ class LinearC2Strategy(ArchitectureStrategy):
                 f"{c2.agent_id} proc={proc_delay:.1f}s")
             yield model.simpy_env.timeout(proc_delay)
 
-            # MCRC에서만 승인 지연
-            if c2.node_type == "MCRC":
+            # 승인 지연: MCRC 또는 KAMD_OPS에서 발생
+            if c2.node_type in ("MCRC", "KAMD_OPS"):
                 auth_delay = c2.get_auth_delay("linear")
                 model.killchain.log_event(
                     threat_id, "auth_delay",
@@ -160,23 +207,38 @@ class LinearC2Strategy(ArchitectureStrategy):
         model._threats_cleared.add(threat_id)
         model.metrics.record_clearance(threat_id, model.simpy_env.now)
 
+    def _has_3axis_c2(self, model: AirDefenseModel) -> bool:
+        """v0.7.1: 3축 C2 노드가 배치에 존재하는지 확인"""
+        c2_types = {c.node_type for c in model.c2_agents}
+        return "KAMD_OPS" in c2_types or "ARMY_LOCAL_AD" in c2_types
+
     def select_shooter(
         self, model: AirDefenseModel, threat: ThreatAgent,
         excluded: Optional[Set[str]] = None,
     ) -> Optional[ShooterAgent]:
-        """선형 C2: Pk 기반 우선순위 사수 매칭 (Gemini #6)"""
+        """선형 C2: Pk 기반 우선순위 사수 매칭 (v0.7.1: 축별 통제 사수 필터)"""
         excluded = excluded or set()
-        prioritized = self.registry.get_prioritized_shooters(threat.threat_type)
+
+        # v0.7.1: 3축 분리 시에만 축별 필터 적용
+        allowed_types = None
+        if self._has_3axis_c2(model):
+            axis_c2_type = THREAT_C2_AXIS.get(threat.identified_type)
+            allowed_types = C2_AXIS_CONTROL.get(axis_c2_type) if axis_c2_type else None
+
+        # 식별된 유형 기준 우선순위
+        prioritized = self.registry.get_prioritized_shooters(threat.identified_type)
         preferred_types = [st.type_id for st in prioritized]
 
         for weapon in preferred_types:
+            if allowed_types and weapon not in allowed_types:
+                continue
             for sh in model.shooter_agents:
                 if (sh.weapon_type == weapon
                         and sh.agent_id not in excluded
                         and sh.can_engage(threat)):
                     return sh
 
-        # Fallback: 아무 교전 가능한 사수
+        # Fallback: 아무 교전 가능한 사수 (축 필터 없이)
         for sh in model.shooter_agents:
             if sh.agent_id not in excluded and sh.can_engage(threat):
                 return sh
@@ -193,7 +255,7 @@ class LinearC2Strategy(ArchitectureStrategy):
     def get_max_simultaneous(self, model: AirDefenseModel, threat: ThreatAgent) -> int:
         """선형 C2: 고정 다중 교전 정책"""
         return ENGAGEMENT_POLICY["max_simultaneous_shooters"].get(
-            threat.threat_type,
+            threat.identified_type,
             ENGAGEMENT_POLICY["default_max_simultaneous"],
         )
 
@@ -210,6 +272,46 @@ class LinearC2Strategy(ArchitectureStrategy):
     def get_redundancy_factor(self) -> float:
         return 1.0
 
+    # ── v0.7.1 오버라이드 ──
+
+    def identify_threat_type(
+        self, model: AirDefenseModel, threat: ThreatAgent,
+        sensors_tracking: int = 1,
+    ) -> str:
+        """Linear: 단일 센서 → 탄도 시그니처의 MLRS를 SRBM으로 오인식"""
+        if (threat.radar_signature == "ballistic"
+                and threat.actual_type != "SRBM"):
+            if random.random() < THREAT_ID_CONFIG["linear_misid_prob"]:
+                return "SRBM"  # 오인식
+        return threat.actual_type
+
+    def check_duplicate_engagement(
+        self, model: AirDefenseModel, threat: ThreatAgent,
+    ) -> bool:
+        """Linear: 교전상태 미공유 → 중복교전 허용 (항상 False)"""
+        return False
+
+    def get_engagement_layer_shooters(
+        self, model: AirDefenseModel, threat: ThreatAgent,
+    ) -> list:
+        """Linear: 3축 분리 시 축별 통제 사수만 반환, 아니면 전체"""
+        if not self._has_3axis_c2(model):
+            return [s for s in model.shooter_agents if s.can_engage(threat)]
+
+        axis_c2_type = THREAT_C2_AXIS.get(threat.identified_type)
+        allowed_types = C2_AXIS_CONTROL.get(axis_c2_type) if axis_c2_type else None
+
+        candidates = []
+        for sh in model.shooter_agents:
+            if not sh.can_engage(threat):
+                continue
+            if allowed_types and sh.weapon_type not in allowed_types:
+                continue
+            candidates.append(sh)
+        return candidates if candidates else [
+            s for s in model.shooter_agents if s.can_engage(threat)
+        ]
+
 
 # =============================================================================
 # Kill Web 전략
@@ -219,11 +321,25 @@ class KillWebStrategy(ArchitectureStrategy):
     """Kill Web 아키텍처: 분산 COP, 최적 사수 선정, 적응형 교전"""
 
     def build_topology(self, sensors, c2_nodes, shooters) -> nx.DiGraph:
+        # v0.7.1: IAOC 존재 시 현실적 토폴로지 사용
+        c2_types = {c.node_type for c in c2_nodes}
+        if "IAOC" in c2_types:
+            return build_realistic_killweb_topology(sensors, c2_nodes, shooters)
         return build_killweb_topology(sensors, c2_nodes, shooters)
 
     def run_killchain(self, model: AirDefenseModel, threat: ThreatAgent) -> Generator:
-        """Kill Web 킬체인: 자동 COP 융합 → 최적 사수 선정 → 교전"""
+        """Kill Web 킬체인: 자동 COP 융합 → 위협 식별 → 최적 사수 선정 → 교전"""
         threat_id = threat.unique_id
+
+        # v0.7.1: 다중 센서 융합 기반 위협 식별
+        n_sensors = sum(
+            1 for s in model.sensor_agents
+            if s.is_operational and s.can_detect_type(threat.threat_type)
+        )
+        threat.identified_type = self.identify_threat_type(
+            model, threat, sensors_tracking=max(n_sensors, 1))
+        model.metrics.record_threat_identification(
+            threat_id, threat.identified_type, threat.actual_type)
 
         # 1. 자동 COP 융합
         delay = model.comm_channel.get_delay("sensor_to_c2")
@@ -418,3 +534,34 @@ class KillWebStrategy(ArchitectureStrategy):
     def get_redundancy_factor(self) -> float:
         """Kill Web: 메시 구조 다중 경로 완화"""
         return COMM_DEGRADATION["killweb_redundancy_factor"]
+
+    # ── v0.7.1 오버라이드 ──
+
+    def identify_threat_type(
+        self, model: AirDefenseModel, threat: ThreatAgent,
+        sensors_tracking: int = 1,
+    ) -> str:
+        """Kill Web: 다중 센서 융합 → 정확한 식별"""
+        if sensors_tracking >= THREAT_ID_CONFIG["min_sensors_for_id"]:
+            return threat.actual_type  # 정확 식별
+        # 단일 센서이면 소폭 오인식 가능
+        if (threat.radar_signature == "ballistic"
+                and threat.actual_type != "SRBM"):
+            if random.random() < THREAT_ID_CONFIG["killweb_misid_prob"]:
+                return "SRBM"
+        return threat.actual_type
+
+    def check_duplicate_engagement(
+        self, model: AirDefenseModel, threat: ThreatAgent,
+    ) -> bool:
+        """Kill Web: COP 공유로 교전 계획 확인 → 중복 방지"""
+        for c2 in model.c2_agents:
+            if c2.is_operational and threat.unique_id in c2.engagement_plans:
+                return True  # 이미 교전 계획 존재
+        return False
+
+    def get_engagement_layer_shooters(
+        self, model: AirDefenseModel, threat: ThreatAgent,
+    ) -> list:
+        """Kill Web: Any Sensor → Best Shooter (전체 사수 풀 활용)"""
+        return [s for s in model.shooter_agents if s.can_engage(threat)]

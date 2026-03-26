@@ -60,6 +60,9 @@ class ThreatCapability(BaseModel):
     altitude: float = Field(ge=0, description="비행 고도 (km)")
     rcs: float = Field(gt=0, description="레이더 반사 면적 (m²)")
     maneuvering: bool = Field(default=False, description="기동 여부")
+    # v0.7.1 신규 필드
+    radar_signature: Optional[str] = Field(default=None, description="레이더 시그니처 (ballistic 등)")
+    cost_ratio: float = Field(default=1.0, ge=0, description="비용 비율 (SRBM 대비)")
 
 
 # =============================================================================

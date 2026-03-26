@@ -306,6 +306,7 @@ class AirDefenseModel(Model):
 
         for threat in newly_detected:
             self._threats_in_killchain.add(threat.unique_id)
+            # v0.7.1: 위협 식별 결과 기록은 strategy.run_killchain 내에서 수행
             # strategy 위임: 아키텍처별 킬체인 프로세스
             self.simpy_env.process(self.strategy.run_killchain(self, threat))
 
@@ -350,12 +351,13 @@ class AirDefenseModel(Model):
         if not cleared_threats:
             return
 
-        # 위협 우선순위 정렬
-        priority = {"SRBM": 10, "CRUISE_MISSILE": 8, "AIRCRAFT": 6, "UAS": 3}
+        # 위협 우선순위 정렬 (v0.7.1: identified_type 기준)
+        priority = {"SRBM": 10, "MLRS_GUIDED": 7, "CRUISE_MISSILE": 8,
+                     "AIRCRAFT": 6, "UAS": 3}
         defense_target = self.deployment["defense_target"]
         cleared_threats.sort(
             key=lambda t: (
-                -priority.get(t.threat_type, 1),
+                -priority.get(t.identified_type, 1),
                 math.dist(t.pos, defense_target),
             )
         )
@@ -413,6 +415,12 @@ class AirDefenseModel(Model):
                 threat.unique_id, self.sim_time,
                 shooter.agent_id, hit, optimal_id,
             )
+
+            # v0.7.1: 고가 자산 소모 기록
+            if hasattr(threat, 'cost_ratio'):
+                self.metrics.record_expensive_asset_use(
+                    shooter.weapon_type, threat.actual_type, threat.cost_ratio,
+                )
 
             self.killchain.log_event(
                 threat.unique_id, "engagement",

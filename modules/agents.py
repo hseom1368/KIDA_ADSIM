@@ -304,6 +304,12 @@ class ThreatAgent(Agent):
         self.reached_target_time = None
         self.label = params["label"]
         self.elapsed_flight_time = 0.0
+        # v0.7.1: 위협 식별 관련
+        self.radar_signature = params.get("radar_signature")
+        self.actual_type = params["threat_type"]     # 실제 유형
+        self.identified_type = params["threat_type"]  # 식별된 유형 (C2에서 변경 가능)
+        self.cost_ratio = params.get("cost_ratio", 1.0)
+        self.engagement_attempts = []  # [(layer_name, time, result)]
 
         # 비행 프로파일 초기화
         if "flight_profile" in params:

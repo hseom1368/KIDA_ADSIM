@@ -27,7 +27,7 @@ def generate_threats_for_scenario(scenario_name, model, seed=None):
         np.random.seed(seed)
 
     scenario = SCENARIO_PARAMS[scenario_name]
-    defense_target = DEFAULT_DEPLOYMENT["defense_target"]
+    defense_target = model.deployment.get("defense_target", DEFAULT_DEPLOYMENT["defense_target"])
     approach_azimuth = scenario.get("approach_azimuth", (240, 360))
     approach_distance = scenario.get("approach_distance", 200)
 
@@ -36,6 +36,11 @@ def generate_threats_for_scenario(scenario_name, model, seed=None):
     if scenario_name == "scenario_4_sequential":
         # 포아송 도착 패턴
         threat_specs = _generate_poisson_threats(
+            scenario, defense_target, approach_azimuth, approach_distance
+        )
+    elif scenario.get("tot_scheduling"):
+        # v0.7.1: TOT 스케줄링 (동시 도착 역산)
+        threat_specs = _generate_tot_threats(
             scenario, defense_target, approach_azimuth, approach_distance
         )
     else:
@@ -104,6 +109,42 @@ def _random_approach_position(defense_target, azimuth_range, distance):
     y = defense_target[1] + dist * math.cos(azimuth_rad)
 
     return (x, y)
+
+
+def _generate_tot_threats(scenario, defense_target, approach_azimuth,
+                          approach_distance):
+    """v0.7.1: TOT(Time-on-Target) 스케줄링 — 동시 도착을 위한 역산 발사시각"""
+    tot_impact_time = scenario.get("tot_impact_time", 600)
+    waves = scenario.get("waves", [])
+    threat_specs = []
+
+    for wave in waves:
+        for threat_type, count in wave["threats"].items():
+            params = THREAT_PARAMS.get(threat_type)
+            if not params:
+                continue
+
+            # 위협별 평균 속도 계산 (비행 프로파일 기반)
+            if "flight_profile" in params:
+                phases = params["flight_profile"]["phases"]
+                avg_speed = sum(
+                    p["duration_ratio"] * (p["speed_start"] + p["speed_end"]) / 2
+                    for p in phases
+                )
+            else:
+                avg_speed = params["speed"]
+
+            for _ in range(count):
+                pos = _random_approach_position(
+                    defense_target, approach_azimuth, approach_distance
+                )
+                dist = math.dist(pos, defense_target)
+                flight_time = dist / max(avg_speed, 0.001)
+                # 역산 발사시각: 동시 도달을 위해 비행시간만큼 앞당김
+                launch_time = max(0, tot_impact_time - flight_time)
+                threat_specs.append((threat_type, pos, defense_target, launch_time))
+
+    return threat_specs
 
 
 def get_scenario_node_destructions(scenario_name, architecture):

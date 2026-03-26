@@ -44,6 +44,7 @@ ENGAGEMENT_POLICY = {
         "CRUISE_MISSILE": 2,
         "AIRCRAFT": 1,
         "UAS": 1,
+        "MLRS_GUIDED": 1,      # v0.7.1: 장사정포 (저가 위협 → 최소 교전)
     },
     # 다중 교전 기본값 (미정의 위협 유형)
     "default_max_simultaneous": 1,
@@ -503,6 +504,49 @@ THREAT_PARAMS = {
             ],
         },
     },
+    # ── v0.7.1 신규 위협 ──
+    "MLRS_GUIDED": {
+        "threat_type": "MLRS_GUIDED",
+        "speed": 1.5,               # km/s (Mach 4.4)
+        "altitude": 40.0,           # km (최대 정점, 탄도궤적)
+        "rcs": 0.1,                 # m²
+        "maneuvering": False,
+        "label": "KN-25 600mm MLRS",
+        "radar_signature": "ballistic",
+        "cost_ratio": 0.01,         # 탄도미사일 대비 1% 비용
+        "flight_profile": {
+            "type": "ballistic",
+            "phases": [
+                {
+                    "name": "boost",
+                    "duration_ratio": 0.15,
+                    "altitude_start": 0.0,
+                    "altitude_end": 40.0,
+                    "speed_start": 0.3,
+                    "speed_end": 1.5,
+                    "maneuvering": False,
+                },
+                {
+                    "name": "midcourse",
+                    "duration_ratio": 0.50,
+                    "altitude_start": 40.0,
+                    "altitude_end": 20.0,
+                    "speed_start": 1.5,
+                    "speed_end": 1.2,
+                    "maneuvering": False,
+                },
+                {
+                    "name": "terminal",
+                    "duration_ratio": 0.35,
+                    "altitude_start": 20.0,
+                    "altitude_end": 0.0,
+                    "speed_start": 1.2,
+                    "speed_end": 1.8,
+                    "maneuvering": False,
+                },
+            ],
+        },
+    },
     "UAS": {
         "threat_type": "UAS",
         "speed": 0.05,              # km/s (~180km/h) — 레거시 기본값
@@ -665,6 +709,89 @@ SCENARIO_PARAMS = {
             {"time": 90, "target": "EOC_3"},
         ],
     },
+    # ── v0.7.1 신규 시나리오 ──
+    "scenario_6_tot_mixed": {
+        "name": "TOT 섞어쏘기",
+        "description": "SRBM+CM+UAS 동시도착(TOT) 복합공격",
+        "tot_scheduling": True,
+        "tot_impact_time": 600,     # 목표 동시 도달 시각 (초)
+        "waves": [
+            {"time": 0, "threats": {"SRBM": 8, "CRUISE_MISSILE": 8, "UAS": 15}},
+        ],
+        "approach_azimuth": (240, 360),
+        "approach_distance": 200,
+        "jamming_level": 0.0,
+        "node_destruction": [],
+    },
+    "scenario_7_mlrs_saturation": {
+        "name": "장사정포 포화",
+        "description": "KN-25 MLRS 대량 + SRBM 소수 혼합",
+        "waves": [
+            {"time": 0, "threats": {"SRBM": 3, "MLRS_GUIDED": 30}},
+            {"time": 30, "threats": {"SRBM": 2, "MLRS_GUIDED": 20}},
+        ],
+        "approach_azimuth": (260, 340),
+        "approach_distance": 180,
+        "jamming_level": 0.0,
+        "node_destruction": [],
+    },
+}
+
+# =============================================================================
+# 7-1. 교전 계층 정의 (v0.7.1 — 다층 요격)
+# =============================================================================
+ENGAGEMENT_LAYERS = {
+    # 탄도탄 방어 (고고도→저고도 순차)
+    "BMD": [
+        {"name": "THAAD", "alt_range": (40, 150), "shooter_types": ["THAAD"]},
+        {"name": "LSAM_ABM", "alt_range": (40, 60), "shooter_types": ["LSAM_ABM"]},
+        {"name": "PAC3_MSE", "alt_range": (0, 40), "shooter_types": ["PATRIOT_PAC3"]},
+        {"name": "CHEONGUNG2_BMD", "alt_range": (0, 20), "shooter_types": ["CHEONGUNG2"]},
+    ],
+    # 항공기/순항미사일 방어
+    "AIR_DEFENSE": [
+        {"name": "LSAM_AAM", "alt_range": (0, 20), "shooter_types": ["LSAM_AAM"]},
+        {"name": "CHEONGUNG", "alt_range": (0, 15), "shooter_types": ["CHEONGUNG1", "CHEONGUNG2"]},
+        {"name": "CHUNMA", "alt_range": (0, 5), "shooter_types": ["CHUNMA"]},
+        {"name": "SHORAD", "alt_range": (0, 3), "shooter_types": ["BIHO"]},
+    ],
+}
+
+# 위협 유형 → 교전 계층 매핑
+THREAT_LAYER_MAP = {
+    "SRBM": "BMD",
+    "MLRS_GUIDED": "BMD",
+    "CRUISE_MISSILE": "AIR_DEFENSE",
+    "AIRCRAFT": "AIR_DEFENSE",
+    "UAS": "AIR_DEFENSE",
+}
+
+# =============================================================================
+# 7-2. 위협 식별 파라미터 (v0.7.1)
+# =============================================================================
+THREAT_ID_CONFIG = {
+    "linear_misid_prob": 0.7,   # Linear C2에서 MLRS→SRBM 오인식 확률
+    "killweb_misid_prob": 0.1,  # Kill Web에서 오인식 확률
+    "min_sensors_for_id": 2,    # 정확 식별에 필요한 최소 센서 수
+}
+
+# =============================================================================
+# 7-3. C2 축별 사수 통제 매핑 (v0.7.1 — 3축 분리)
+# =============================================================================
+C2_AXIS_CONTROL = {
+    # Linear C2: 각 축이 통제하는 사수 유형
+    "MCRC": ["CHEONGUNG1", "KF16", "LSAM_AAM"],
+    "KAMD_OPS": ["PATRIOT_PAC3", "CHEONGUNG2", "THAAD", "LSAM_ABM"],
+    "ARMY_LOCAL_AD": ["CHUNMA", "BIHO"],
+}
+
+# 위협 유형 → 담당 C2 축 (Linear에서)
+THREAT_C2_AXIS = {
+    "SRBM": "KAMD_OPS",
+    "MLRS_GUIDED": "KAMD_OPS",       # 탄도궤적이므로 KAMD가 담당
+    "CRUISE_MISSILE": "MCRC",
+    "AIRCRAFT": "MCRC",
+    "UAS": "ARMY_LOCAL_AD",
 }
 
 # =============================================================================
