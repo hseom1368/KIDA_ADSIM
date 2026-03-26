@@ -20,7 +20,7 @@ import webbrowser
 
 from modules.model import AirDefenseModel
 from modules.exporters import CZMLExporter, CesiumConfigExporter
-from modules.config import SCENARIO_PARAMS
+from modules.config import SCENARIO_PARAMS, REALISTIC_DEPLOYMENT
 
 SCENARIOS = list(SCENARIO_PARAMS.keys())
 ARCHITECTURES = ["linear", "killweb"]
@@ -29,15 +29,23 @@ DEFAULT_PORT = 8000
 DEFAULT_SEED = 42
 
 
-def export_scenario(scenario: str, architecture: str, seed: int = DEFAULT_SEED) -> dict:
+def export_scenario(scenario: str, architecture: str, seed: int = DEFAULT_SEED,
+                    deployment_name: str = "default") -> dict:
     """시뮬레이션 실행 + CZML + viewer_config 내보내기."""
-    print(f"  Running {scenario} / {architecture} (seed={seed})...", end=" ", flush=True)
+    dep_label = f" [{deployment_name}]" if deployment_name != "default" else ""
+    print(f"  Running {scenario} / {architecture}{dep_label} (seed={seed})...", end=" ", flush=True)
+
+    deployment = REALISTIC_DEPLOYMENT if deployment_name == "realistic" else None
+    realistic_coords = deployment_name == "realistic"
+    # v0.7.4: REALISTIC_DEPLOYMENT는 한반도 좌표계 사용 (base_lat=DMZ=37.95°N)
+    base_lat = 37.95 if realistic_coords else 37.0
 
     m = AirDefenseModel(
         architecture=architecture,
         scenario=scenario,
         seed=seed,
         record_snapshots=True,
+        deployment=deployment,
     )
     result = m.run_full()
 
@@ -51,7 +59,9 @@ def export_scenario(scenario: str, architecture: str, seed: int = DEFAULT_SEED) 
     czml_path = os.path.join(OUTPUT_DIR, f"{scenario}_{architecture}.czml")
     CZMLExporter(
         result["snapshots"], result["config"],
+        base_lat=base_lat,
         topology_edges=edges, architecture=architecture,
+        realistic_coords=realistic_coords,
     ).export(czml_path)
 
     # viewer_config.json 내보내기
@@ -59,6 +69,7 @@ def export_scenario(scenario: str, architecture: str, seed: int = DEFAULT_SEED) 
     CesiumConfigExporter(
         result["snapshots"], result["config"],
         architecture, scenario,
+        realistic_coords=realistic_coords,
     ).export(config_path)
 
     leaker = result["metrics"]["leaker_rate"]
@@ -67,7 +78,8 @@ def export_scenario(scenario: str, architecture: str, seed: int = DEFAULT_SEED) 
     return result
 
 
-def run_export(scenarios: list[str], seed: int = DEFAULT_SEED) -> None:
+def run_export(scenarios: list[str], seed: int = DEFAULT_SEED,
+               deployment_name: str = "default") -> None:
     """지정 시나리오들 내보내기."""
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -75,7 +87,7 @@ def run_export(scenarios: list[str], seed: int = DEFAULT_SEED) -> None:
     count = 0
     for scenario in scenarios:
         for arch in ARCHITECTURES:
-            export_scenario(scenario, arch, seed)
+            export_scenario(scenario, arch, seed, deployment_name)
             count += 1
 
     print(f"\nExport complete: {count} files in {OUTPUT_DIR}/")
@@ -133,6 +145,12 @@ def main():
         default=DEFAULT_SEED,
         help=f"Random seed (default: {DEFAULT_SEED})",
     )
+    parser.add_argument(
+        "--deployment", "-d",
+        choices=["default", "realistic"],
+        default="default",
+        help="Deployment config: default (4센서/6사수) or realistic (한반도 방어구역)",
+    )
 
     args = parser.parse_args()
 
@@ -146,11 +164,11 @@ def main():
             sys.exit(1)
         scenarios = [args.scenario]
 
-    print(f"KIDA_ADSIM Cesium Exporter (seed={args.seed})")
+    print(f"KIDA_ADSIM Cesium Exporter (seed={args.seed}, deployment={args.deployment})")
     print(f"Scenarios: {len(scenarios)}, Architectures: {len(ARCHITECTURES)}")
     print()
 
-    run_export(scenarios, args.seed)
+    run_export(scenarios, args.seed, args.deployment)
 
     if args.serve:
         start_server(args.port)

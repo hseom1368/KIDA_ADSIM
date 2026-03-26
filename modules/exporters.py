@@ -26,6 +26,7 @@ class CZMLExporter:
     # 위협 유형별 궤적 보간 설정 (Cesium interpolation)
     INTERPOLATION_CONFIG = {
         "SRBM": {"algorithm": "LAGRANGE", "degree": 5},
+        "MLRS_GUIDED": {"algorithm": "LAGRANGE", "degree": 3},
         "CRUISE_MISSILE": {"algorithm": "LINEAR", "degree": 1},
         "AIRCRAFT": {"algorithm": "LAGRANGE", "degree": 3},
         "UAS": {"algorithm": "LINEAR", "degree": 1},
@@ -34,6 +35,7 @@ class CZMLExporter:
     # 색상 상수 (RGBA 0-255)
     COLORS = {
         "SRBM": [255, 0, 0, 255],           # 빨강
+        "MLRS_GUIDED": [200, 100, 0, 255],   # 갈색
         "CRUISE_MISSILE": [255, 165, 0, 255], # 주황
         "AIRCRAFT": [255, 255, 0, 255],       # 노랑
         "UAS": [128, 0, 128, 255],            # 보라
@@ -65,7 +67,8 @@ class CZMLExporter:
     def __init__(self, snapshots: list, config: dict,
                  base_lon: float = 127.0, base_lat: float = 37.0,
                  topology_edges: Optional[list] = None,
-                 architecture: Optional[str] = None):
+                 architecture: Optional[str] = None,
+                 realistic_coords: bool = False):
         """
         Args:
             snapshots: model.run_full()["snapshots"] 리스트
@@ -74,6 +77,7 @@ class CZMLExporter:
             base_lat: 위도 기준점
             topology_edges: [{"source": str, "target": str, "link_type": str}, ...]
             architecture: "linear" 또는 "killweb" (토폴로지 스타일 결정)
+            realistic_coords: True이면 Y축 부호 반전 (Y+=남한=위도 감소)
         """
         self.snapshots = snapshots
         self.config = config
@@ -81,11 +85,14 @@ class CZMLExporter:
         self.BASE_LAT = base_lat
         self.topology_edges = topology_edges
         self.architecture = architecture
+        # v0.7.4: REALISTIC_DEPLOYMENT에서 Y축 방향 보정
+        # 시뮬: Y+ = DMZ 남쪽(남한) → 실제 위도는 감소 (남쪽으로)
+        self._lat_sign = -1.0 if realistic_coords else 1.0
 
     def _sim_to_geo(self, pos: tuple, altitude_km: float = 0.0) -> list:
         """시뮬레이션 좌표 (x, y) → [경도, 위도, 고도(m)]"""
         lon = self.BASE_LON + pos[0] * self.KM_TO_LON
-        lat = self.BASE_LAT + pos[1] * self.KM_TO_LAT
+        lat = self.BASE_LAT + pos[1] * self.KM_TO_LAT * self._lat_sign
         alt = altitude_km * 1000  # km → m
         return [lon, lat, alt]
 
@@ -550,24 +557,27 @@ class CesiumConfigExporter:
     }
 
     def __init__(self, snapshots: list, config: dict,
-                 architecture: str, scenario: str):
+                 architecture: str, scenario: str,
+                 realistic_coords: bool = False):
         """
         Args:
             snapshots: model.run_full()["snapshots"] 리스트
             config: {"area_size": ..., "defense_target": ...}
             architecture: "linear" 또는 "killweb"
             scenario: 시나리오 이름
+            realistic_coords: True이면 Y축 부호 반전
         """
         self.snapshots = snapshots
         self.config = config
         self.architecture = architecture
         self.scenario = scenario
+        self._lat_sign = -1.0 if realistic_coords else 1.0
 
     def _sim_to_geo(self, pos: tuple) -> dict:
         """시뮬레이션 좌표 → {"lon": float, "lat": float, "alt": 0}"""
         return {
             "lon": self.BASE_LON + pos[0] * self.KM_TO_LON,
-            "lat": self.BASE_LAT + pos[1] * self.KM_TO_LAT,
+            "lat": self.BASE_LAT + pos[1] * self.KM_TO_LAT * self._lat_sign,
             "alt": 0,
         }
 
