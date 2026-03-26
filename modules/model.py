@@ -140,6 +140,9 @@ class AirDefenseModel(Model):
         self._threats_engaged_layers = {}       # {threat_id: set(shooter_types)}
         # v0.7.2: 중복교전 — 축별 cleared 추적 (Linear 3축)
         self._threats_cleared_by_axis = {}      # {axis: set(threat_ids)}
+        # v0.7.3: 다축 킬체인 추적
+        self._threat_detected_axes = {}         # {threat_id: set(axis_names)}
+        self._threat_killchain_axes = {}        # {threat_id: set(axis_names)}
 
     def _create_defense_agents(self):
         """방어 에이전트 생성"""
@@ -285,10 +288,37 @@ class AirDefenseModel(Model):
                         track_info = sensor.track(threat)
                         self.metrics.record_detection(threat.unique_id, self.sim_time)
                         self._report_to_c2(sensor, track_info)
+                        # v0.7.3: 축 탐지 기록
+                        self._record_sensor_axis(sensor, threat)
                 else:
                     if sensor.detect(threat, self.jamming_level, self.detection_factor):
                         track_info = sensor.track(threat)
                         self._report_to_c2(sensor, track_info)
+                        # v0.7.3: 추가 축 탐지 기록
+                        self._record_sensor_axis(sensor, threat)
+
+    def _record_sensor_axis(self, sensor, threat):
+        """v0.7.3: 센서의 C2 축 연결 기록 (다축 킬체인용)"""
+        tid = threat.unique_id
+        if tid not in self._threat_detected_axes:
+            self._threat_detected_axes[tid] = set()
+
+        if sensor.provides_cueing_to:
+            for axis in sensor.provides_cueing_to:
+                self._threat_detected_axes[tid].add(axis)
+        else:
+            # weapon_fc 센서: TOPOLOGY_RELATIONS → 3축(MCRC/KAMD_OPS/ARMY_LOCAL_AD)으로 매핑
+            from .config import TOPOLOGY_RELATIONS, C2_AXIS_CONTROL
+            c2_id = TOPOLOGY_RELATIONS.get("sensor_to_c2", {}).get(sensor.sensor_type)
+            if c2_id:
+                # c2_id (TOC_PAT 등)을 3축으로 변환: 해당 C2가 통제하는 사수 유형으로 역조회
+                for axis, shooter_types in C2_AXIS_CONTROL.items():
+                    # 이 센서의 C2가 이 축의 C2인지 확인
+                    shooter_c2 = TOPOLOGY_RELATIONS.get("shooter_to_c2", {})
+                    for st in shooter_types:
+                        if shooter_c2.get(st) == c2_id:
+                            self._threat_detected_axes[tid].add(axis)
+                            break
 
     def _report_to_c2(self, sensor, track_info):
         """센서 보고를 C2로 전달 (strategy 위임)"""
@@ -313,6 +343,27 @@ class AirDefenseModel(Model):
             # v0.7.1: 위협 식별 결과 기록은 strategy.run_killchain 내에서 수행
             # strategy 위임: 아키텍처별 킬체인 프로세스
             self.simpy_env.process(self.strategy.run_killchain(self, threat))
+            # v0.7.3: 최초 킬체인 축 기록
+            from .config import THREAT_C2_AXIS
+            initial_axis = THREAT_C2_AXIS.get(
+                getattr(threat, 'identified_type', threat.threat_type), "MCRC")
+            self._threat_killchain_axes.setdefault(threat.unique_id, set()).add(initial_axis)
+
+        # v0.7.3: 다축 독립 킬체인 — 이미 킬체인 중인 위협이 새 축에서 탐지된 경우
+        if hasattr(self.strategy, '_has_3axis_c2') and self.strategy._has_3axis_c2(self):
+            for threat in self.threat_agents:
+                if not threat.is_alive or not threat.is_detected:
+                    continue
+                tid = threat.unique_id
+                if tid not in self._threats_in_killchain:
+                    continue
+                detected_axes = self._threat_detected_axes.get(tid, set())
+                launched_axes = self._threat_killchain_axes.get(tid, set())
+                new_axes = detected_axes - launched_axes
+                for axis in new_axes:
+                    self._threat_killchain_axes[tid].add(axis)
+                    self.simpy_env.process(
+                        self.strategy.run_killchain_for_axis(self, threat, axis))
 
     # =========================================================================
     # 교전 실행

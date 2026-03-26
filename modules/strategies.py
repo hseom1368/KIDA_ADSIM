@@ -111,6 +111,13 @@ class ArchitectureStrategy(ABC):
         """중복교전 여부 확인 (True=중복, False=교전 가능). 기본: 교전 가능"""
         return False
 
+    def run_killchain_for_axis(
+        self, model: AirDefenseModel, threat: ThreatAgent, axis: str,
+    ) -> Generator:
+        """v0.7.3: 축별 독립 킬체인 (기본: no-op)"""
+        return
+        yield  # make it a generator
+
 
 # =============================================================================
 # 선형 C2 전략
@@ -228,17 +235,10 @@ class LinearC2Strategy(ArchitectureStrategy):
             f"killchain_time={killchain_time:.1f}s")
         model._threats_cleared.add(threat_id)
 
-        # v0.7.2: 축별 cleared 기록 (중복교전 모델링)
+        # v0.7.3: 축별 cleared 기록 (중복교전은 run_killchain_for_axis에서 처리)
         axis = THREAT_C2_AXIS.get(threat.identified_type, "MCRC")
         if axis not in model._threats_cleared_by_axis:
             model._threats_cleared_by_axis[axis] = set()
-        if threat_id in model._threats_cleared_by_axis.get(axis, set()):
-            # 이미 이 축에서 교전된 위협 → 다른 축에서도 교전 (중복교전)
-            model.metrics.record_duplicate_engagement(
-                threat_id, axis,
-                [a for a in model._threats_cleared_by_axis
-                 if threat_id in model._threats_cleared_by_axis[a] and a != axis],
-            )
         model._threats_cleared_by_axis[axis].add(threat_id)
 
         model.metrics.record_clearance(threat_id, model.simpy_env.now)
@@ -347,6 +347,64 @@ class LinearC2Strategy(ArchitectureStrategy):
         return candidates if candidates else [
             s for s in model.shooter_agents if s.can_engage(threat)
         ]
+
+    def run_killchain_for_axis(
+        self, model: AirDefenseModel, threat: ThreatAgent, axis: str,
+    ) -> Generator:
+        """v0.7.3: 특정 C2 축의 독립 킬체인 (중복교전 모델링)"""
+        threat_id = threat.unique_id
+
+        # 1. 센서 → C2 전달 지연
+        delay = model.comm_channel.get_delay("sensor_to_c2")
+        yield model.simpy_env.timeout(delay)
+        if not model.comm_channel.is_message_delivered():
+            return
+
+        # 2. 해당 축의 C2에서 처리
+        axis_c2 = [c for c in model.c2_agents
+                    if c.is_operational and c.node_type == axis]
+        for c2 in axis_c2:
+            if c2.agent_id not in model.c2_resources:
+                continue
+            resource = model.c2_resources[c2.agent_id]
+            req = resource.request()
+            yield req
+            proc_delay = model.comm_channel.get_delay("c2_processing")
+            yield model.simpy_env.timeout(proc_delay)
+            if c2.node_type in ("MCRC", "KAMD_OPS"):
+                auth_delay = c2.get_auth_delay("linear")
+                yield model.simpy_env.timeout(auth_delay)
+            resource.release(req)
+            c2.processed_count += 1
+
+        # 3. 큐잉 + 추적 + 화력통제 지연
+        cueing_delay = random.uniform(*SENSOR_CUEING_DELAYS["c2_to_weapon_cueing_linear"])
+        yield model.simpy_env.timeout(cueing_delay)
+        acq_delay = random.uniform(*SENSOR_CUEING_DELAYS["weapon_radar_acquisition"])
+        yield model.simpy_env.timeout(acq_delay)
+        fc_delay = random.uniform(*SENSOR_CUEING_DELAYS["track_to_fire_control"])
+        yield model.simpy_env.timeout(fc_delay)
+
+        # 4. 사수 통보
+        delay = model.comm_channel.get_delay("c2_to_shooter")
+        yield model.simpy_env.timeout(delay)
+        if not model.comm_channel.is_message_delivered():
+            return
+
+        # 5. 교전 승인 — 중복교전 기록
+        model._threats_cleared.add(threat_id)
+        existing_axes = [a for a, tids in model._threats_cleared_by_axis.items()
+                         if threat_id in tids and a != axis]
+        if existing_axes:
+            model.metrics.record_duplicate_engagement(
+                threat_id, axis, existing_axes)
+        if axis not in model._threats_cleared_by_axis:
+            model._threats_cleared_by_axis[axis] = set()
+        model._threats_cleared_by_axis[axis].add(threat_id)
+
+        model.killchain.log_event(
+            threat_id, "cleared_for_engagement",
+            f"duplicate axis={axis} killchain")
 
 
 # =============================================================================

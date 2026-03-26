@@ -222,7 +222,9 @@ class ShooterAgent(Agent):
         # v0.7: 최소 교전 고도 체크 (THAAD, L-SAM ABM 등 고고도 전용)
         if threat.altitude < self.min_altitude:
             return False
-        base_pk = self.pk_table.get(threat.threat_type, 0)
+        # v0.7.3: C2가 식별한 유형 기준 Pk 조회 (오인식 시 해당 유형으로 교전)
+        threat_type_for_pk = getattr(threat, 'identified_type', threat.threat_type)
+        base_pk = self.pk_table.get(threat_type_for_pk, 0)
         if base_pk <= 0:
             return False
         # 최소 Pk 확인
@@ -233,7 +235,9 @@ class ShooterAgent(Agent):
 
     def compute_pk(self, threat, jamming_level=0.0):
         """위협 유형별 Pk 계산 (거리, 기동, 재밍 보정)"""
-        base_pk = self.pk_table.get(threat.threat_type, 0)
+        # v0.7.3: C2가 식별한 유형 기준 Pk 조회
+        threat_type_for_pk = getattr(threat, 'identified_type', threat.threat_type)
+        base_pk = self.pk_table.get(threat_type_for_pk, 0)
         if base_pk <= 0:
             return 0.0
 

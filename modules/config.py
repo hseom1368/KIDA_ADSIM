@@ -223,6 +223,7 @@ SHOOTER_PARAMS = {
         "min_altitude": 0,          # km
         "pk_table": {
             "SRBM": 0.85,
+            "MLRS_GUIDED": 0.90,    # v0.7.3: 비기동 탄도 → SRBM보다 용이
             "CRUISE_MISSILE": 0.80,
             "AIRCRAFT": 0.90,
             "UAS": 0.70,
@@ -241,6 +242,7 @@ SHOOTER_PARAMS = {
         "min_altitude": 0,          # km
         "pk_table": {
             "SRBM": 0.75,
+            "MLRS_GUIDED": 0.80,    # v0.7.3
             "CRUISE_MISSILE": 0.80,
             "AIRCRAFT": 0.85,
             "UAS": 0.65,
@@ -296,6 +298,7 @@ SHOOTER_PARAMS = {
         "min_altitude": 40,         # km (적외선 탐색기 한계 — 고고도 전용)
         "pk_table": {
             "SRBM": 0.90,
+            "MLRS_GUIDED": 0.95,    # v0.7.3: 비기동 탄도 고고도
             "CRUISE_MISSILE": 0.0,
             "AIRCRAFT": 0.0,
             "UAS": 0.0,
@@ -314,6 +317,7 @@ SHOOTER_PARAMS = {
         "min_altitude": 40,         # km (적외선 탐색기 한계 — 고고도 전용)
         "pk_table": {
             "SRBM": 0.85,
+            "MLRS_GUIDED": 0.90,    # v0.7.3
             "CRUISE_MISSILE": 0.0,
             "AIRCRAFT": 0.0,
             "UAS": 0.0,
