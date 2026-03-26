@@ -6,35 +6,40 @@
 방공 효과를 정량적으로 비교·분석하기 위한 M&S(Modeling & Simulation) 프레임워크.
 
 ### 핵심 질문
-> "분산형 Kill Web 아키텍처가 기존 계층형 선형 C2 대비
-> 탐지-교전 시간, 누출률, 교전 성공률, 체계 회복력에서 실질적 우위를 보이는가?"
+> "현재 MCRC(지역방공)/KAMD작전센터(탄도탄 방어)/육군 국지방공(저고도)으로 분리된
+> 선형 방공 지휘구조를 통합 Kill Web(IBCS 개념)으로 전환하면,
+> 탐지-교전 시간, 누출률, 중복교전 방지, 자산 효율성에서 얼마나 개선되는가?"
 
 ### 연구 배경
-- 기존 한국군 방공체계는 **계층형 선형 C2** 구조 (감시→방공통제소→대대→발사대)
-- 북한의 SRBM(KN-23), 순항미사일, UAS 군집 등 **다중·동시 위협** 증가
-- JADC2/Kill Web 개념의 한국군 적용 가능성 검토 필요
+- 한국군 방공은 **공군 MCRC(지역방공) / KAMD작전센터(탄도탄) / 육군 국지방공(저고도)** 3축 분리 운용
+- 3축 분리로 인한 **교전상태 미공유 → 중복교전**, **위협 오인식 → 고가자산 소모** 비효율
+- 북한의 SRBM(KN-23), 순항미사일, KN-25 장사정포, UAS 군집 등 **다중·동시 위협** 증가
+- JADC2/Kill Web/IBCS 개념의 한국군 적용 가능성 정량 검토 필요
 
 ---
 
 ## 2. 비교 대상 아키텍처
 
-### 2.1 선형 C2 (Hierarchical Linear)
+### 2.1 선형 C2 — 3축 분리 (v0.7)
 ```
-[조기경보레이더] → [방공통제소(MCRC)] → [대대전술작전반(TOC)] → [발사대]
+[그린파인] → [KAMD작전센터] → PAC-3/천궁-II/L-SAM/THAAD  (탄도탄 축)
+[FPS-117] → [MCRC]         → 천궁-I/KF-16/L-SAM AAM       (지역방공 축)
+[TPS-880K] → [육군 국지방공] → 천마/비호                      (저고도 축)
 ```
-- 순차적 킬체인: 센서→C2→C2→사수 (단일 경로)
-- MCRC가 단일장애점(SPOF) — 피격 시 체계 마비
-- 교전 승인에 15~120초 소요
-- 평균 Sensor-to-Shooter(S2S): **~354초**
+- 3개 축이 독립 운용 — 교전상태 미공유 → **중복교전 44.2%**
+- 단일 센서 기반 위협 식별 → MLRS를 SRBM으로 **70% 오인식**
+- 센서 큐잉 → 추적 획득 → 화력통제에 10~30초 소요
+- 평균 Sensor-to-Shooter(S2S): **~107초**
 
-### 2.2 Kill Web (Distributed Mesh)
+### 2.2 Kill Web — IAOC 통합 (v0.7)
 ```
-[모든 센서] ↔ [모든 C2] ↔ [모든 사수]  (완전 메시)
+[모든 센서] ↔ [통합 IAOC] ↔ [모든 사수]  (완전 메시)
+   Any Sensor → Best Shooter 원칙
 ```
-- 병렬 킬체인: 다중 경로 동시 처리
-- 분산 구조로 단일장애점 없음 — 노드 손실 시 자동 우회
-- 자동화된 교전 승인 (2~5초)
-- 평균 S2S: **~5초** (선형 대비 71배 향상)
+- COP 공유로 **중복교전 0%** — 교전 계획 실시간 공유
+- 다중 센서 융합으로 위협 **100% 정확 식별**
+- 자동 큐잉으로 추적 획득 시간 50% 단축
+- 평균 S2S: **~12초** (선형 대비 9배 향상)
 
 ---
 
@@ -44,10 +49,10 @@
 
 | 에이전트 | 종류 | 주요 속성 |
 |----------|------|-----------|
-| **센서** | EWR, PAT 레이더, MSAM MFR, SHORAD | 탐지거리, 추적용량, RCS 보정 |
-| **C2 노드** | MCRC, 대대 TOC, EOC | 처리용량, 승인지연, 공통작전상황도 |
-| **사수** | PAC-3, 천궁-II, 비호, KF-16 | 사거리, 최대교전고도, Pk 테이블, 탄약 |
-| **위협** | SRBM, 순항미사일, 항공기, UAS | 속도, 고도, RCS, 비행 프로파일 |
+| **센서** | GREEN_PINE, FPS117, TPS880K, PAT레이더, MFR, SHORAD | 탐지거리, 역할(조기경보/관제/국지/화통), detectable_types |
+| **C2 노드** | MCRC, KAMD_OPS, ARMY_LOCAL_AD, TOC, EOC, IAOC | 처리용량, 승인지연, 3축 분리/통합 |
+| **사수** | THAAD, L-SAM ABM/AAM, PAC-3, 천궁-I/II, 천마, 비호, KF-16 | 사거리, min/max 교전고도, Pk 테이블, identified_type 기반 교전 |
+| **위협** | SRBM, MLRS_GUIDED, 순항미사일, 항공기, UAS | 속도, 고도, RCS, radar_signature, cost_ratio, 비행 프로파일 |
 
 ### 3.2 기술 스택
 
@@ -61,7 +66,7 @@
 | numpy, pandas, scipy | 통계 분석 |
 | matplotlib, seaborn | 2D 시각화 |
 
-### 3.3 소프트웨어 아키텍처 (v0.6)
+### 3.3 소프트웨어 아키텍처 (v0.7)
 
 ```
 config.py → ontology.py → registry.py → strategies.py → model.py → agents.py
@@ -109,7 +114,7 @@ config.py → ontology.py → registry.py → strategies.py → model.py → age
 
 ---
 
-## 5. 성능 지표 (12개)
+## 5. 성능 지표 (18개)
 
 | # | 지표 | 설명 | 단위 |
 |---|------|------|------|
@@ -125,6 +130,12 @@ config.py → ontology.py → registry.py → strategies.py → model.py → age
 | 10 | 회복 시간 | 노드 손실→교전 재개 소요시간 | 초(s) |
 | 11 | 다중 교전 비율 | 복수 사수 동시 교전 비율 | % |
 | 12 | 평균 동시 교전 사수 수 | 다중 교전 시 평균 참여 사수 | 기 |
+| 13 | 중복교전율 | 동일 표적에 2+ C2축 교전 비율 | % |
+| 14 | 고가자산 소모율 | PAC-3/THAAD가 저가 위협에 소모된 비율 | % |
+| 15 | 위협 식별 정확도 | 위협 유형 올바른 식별 비율 | % |
+| 16 | 다층 요격 기회 | 위협당 평균 요격 시도 횟수 | 회 |
+| 17 | 교전배분 효율 | 최적 자산에 배분된 교전 비율 | % |
+| 18 | C2 간 정보지연 | 축 간 정보 전달 평균 소요시간 | 초(s) |
 
 ---
 
@@ -137,6 +148,8 @@ config.py → ontology.py → registry.py → strategies.py → model.py → age
 | 3 | **전자전** | 재밍 3단계 (Light/Moderate/Heavy) | EW 환경 내구성 |
 | 4 | **순차공격** | 포아송(λ=1/60) 지속 도래 | 장시간 지속 방어 |
 | 5 | **노드파괴** | 핵심 노드 시간차 파괴 | 체계 회복력 검증 |
+| 6 | **TOT 섞어쏘기** | SRBM+CM+UAS 동시 도착 (역산 발사) | 동시도달 복합공격 대응 |
+| 7 | **MLRS 포화** | KN-25 50기 + SRBM 5기 | 장사정포 오인식·고가자산 소모 |
 
 ---
 
@@ -161,7 +174,7 @@ KIDA_ADSIM/
 │   ├── index.html         # CesiumJS 3D 통합 뷰어 (CDN 기반)
 │   ├── js/                # app.js, czml-loader, radar-volumes, engagement-viz 등
 │   └── css/hud.css        # Military HUD 스타일
-├── tests/                 # pytest 단위/통합 테스트 (15개 파일, 182개)
+├── tests/                 # pytest 단위/통합 테스트 (20개 파일, 264개)
 ├── output/                # 시뮬레이션 출력 (CZML, viewer_config.json)
 ├── run_cesium.py          # 시뮬→CZML→웹서버 자동화 스크립트
 ├── notebook1~5.ipynb      # Jupyter 분석 노트북
@@ -193,7 +206,7 @@ for arch in ['linear', 'killweb']:
     print(f'{arch}: leaker={leaker:.1f}%, s2s={s2s:.1f}s, success={success:.1f}%')
 "
 
-# 전체 테스트 (182개)
+# 전체 테스트 (264개)
 python -m pytest tests/ -v
 
 # Cesium 3D 시각화 (시뮬→CZML→웹서버)
@@ -213,5 +226,6 @@ python run_cesium.py -s scenario_2_complex      # 특정 시나리오
 | v0.3 | 완료 | 시나리오 2~4 검증, EW 3단계, 테스트 45개, 코드 품질 리뷰 |
 | v0.4 | 완료 | 죽은 코드 정리, 다중 교전 모델링, 메트릭 12개, 테스트 57개 |
 | v0.5 | 완료 | COP 품질 차별화, 적응형 교전, 통신 동적 열화, 2D 전술 시각화, 온톨로지·Strategy 패턴·Registry 리팩터링 |
-| v0.6 | **완료** | Cesium 3D 시각화 통합 (CZML Exporter v2, CesiumJS 뷰어, Military HUD, 레이더 볼륨, 교전 시각화) |
-| v0.7 | **진행 예정** | Monte Carlo 통계 분석 |
+| v0.6 | 완료 | Cesium 3D 시각화 통합 (CZML Exporter v2, CesiumJS 뷰어, Military HUD, 레이더 볼륨, 교전 시각화) |
+| v0.7 | **완료** | 시뮬레이션 현실화 (무기 10종, 센서 7종, C2 3축 분리, IAOC 통합, 위협 식별, 다층 교전, 중복교전, 센서 큐잉, MLRS, TOT, 메트릭 18개) |
+| v0.8 | **진행 예정** | Monte Carlo 통계 분석 |

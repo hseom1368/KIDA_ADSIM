@@ -5,6 +5,130 @@
 
 ---
 
+## [v0.7.3] — 2026-03-26
+
+### 변경사항
+
+#### 고가자산 소모율 + 중복교전 해결
+- `modules/agents.py`: `can_engage()`/`compute_pk()`에서 Pk 조회를 `threat.identified_type` 기준으로 변경 — 오인식 시 해당 유형의 Pk로 교전 (getattr fallback으로 하위 호환)
+- `modules/config.py`: PAC-3/CHEONGUNG2/THAAD/LSAM_ABM pk_table에 `MLRS_GUIDED` Pk 추가
+- `modules/model.py`: `_threat_detected_axes`, `_threat_killchain_axes` 추적, `_record_sensor_axis()` 센서별 C2 축 매핑, 다축 킬체인 추가 실행
+- `modules/strategies.py`: `run_killchain_for_axis()` ABC 기본 구현 + LinearC2Strategy 축별 독립 킬체인 + 중복교전 기록
+- `tests/test_v073_fixes.py` 신규 (7개 테스트)
+
+#### 검증 결과
+- **고가자산 소모**: KillWeb S7에서 waste=79.4% (PAC-3→MLRS 15회, CHEONGUNG2→MLRS 12회)
+- **중복교전**: Linear S6에서 dup=44.2% (23건, KAMD↔MCRC↔ARMY 축 간). KillWeb 0%
+- **DEFAULT_DEPLOYMENT**: waste=0%, dup=0% (하위 호환 완전 유지)
+
+---
+
+## [v0.7.2] — 2026-03-26
+
+### 변경사항
+
+#### REALISTIC_DEPLOYMENT 전면 재배치 (§8.3 좌표계 준수)
+- 천마/비호: Zone A(전방 y=15~20) + Zone B(수도권 y=40) 배치
+- TPS880K: Zone A + 수도권 전방(y=45) 배치 (UAS 탐지 보강)
+- SHORAD_RADAR 추가 배치 (y=20, y=35)
+- 천마(수도권 보강) 2기 추가 (§8.3 ZONE_B 반영)
+
+#### THREAT_ORIGINS 기반 위협 생성
+- S6/S7 시나리오에서 `use_threat_origins=True`
+- SRBM: 평양(y=-180)에서 발사, UAS/CM/MLRS: DMZ(y=-10)에서 발사
+- `_origin_based_position()` 함수 추가
+
+#### 다층 교전 핸드오프
+- `_threats_engaged_layers`: 교전 시도한 사수 유형 추적
+- 동일 유형 재교전 방지, 다른 유형 사수가 재교전 시도
+- `metrics.record_layer_attempt()` 호출
+
+#### 센서 큐잉 SimPy 지연 (SENSOR_CUEING_DELAYS 적용)
+- Linear: C2→큐잉(3~10s) + 추적획득(5~15s) + 화력통제(2~5s)
+- KillWeb: C2→큐잉(1~3s) + 추적획득(2.5~7.5s, 자동큐잉)
+
+#### 검증 결과
+- UAS 15/15 탐지+격추, 천마 6~7shots, 비호 2shots
+- 다층 교전: 위협당 평균 2.2~2.7회 교전 시도
+- Linear S2S: 89~107초, KillWeb S2S: 11~12초
+
+---
+
+## [v0.7.1] — 2026-03-26
+
+### 변경사항
+
+#### C2 3축 분리 (LinearC2Strategy)
+- `_get_axis_c2()`: 위협 유형별 C2 축 라우팅 (KAMD_OPS/MCRC/ARMY_LOCAL_AD)
+- `select_shooter()`: 3축 분리 시 축별 통제 사수 필터
+- `_has_3axis_c2()`: DEFAULT_DEPLOYMENT에서 기존 동작 유지 게이트
+- `C2_AXIS_CONTROL`, `THREAT_C2_AXIS` 매핑 추가
+
+#### 위협 식별 모델
+- `identify_threat_type()`: Linear 단일센서 오인식(70%), KillWeb 다중센서 정확식별
+- `THREAT_ID_CONFIG`: misid_prob, min_sensors_for_id 파라미터
+- `ThreatAgent`: `radar_signature`, `actual_type`, `identified_type`, `cost_ratio` 속성
+- `metrics.record_threat_identification()` 호출
+
+#### KN-25 MLRS 위협 + 신규 시나리오
+- `MLRS_GUIDED` 위협 유형 (ballistic 시그니처, cost_ratio=0.01)
+- `scenario_6_tot_mixed`: TOT 섞어쏘기 (SRBM+CM+UAS 동시도착)
+- `scenario_7_mlrs_saturation`: 장사정포 포화 (KN-25 30+20기 + SRBM 5기)
+- TOT 역산 발사시각 스케줄링 (`_generate_tot_threats`)
+
+#### 신규 메트릭 6개
+- duplicate_engagement_rate, expensive_asset_waste_rate, threat_id_accuracy
+- multi_layer_intercept_opportunities, engagement_allocation_efficiency, inter_c2_info_delay
+
+---
+
+## [v0.7.0] — 2026-03-26
+
+### 변경사항
+
+#### 무기체계 5종 신규 추가
+- THAAD (200km, 40~150km 고도, SRBM 전용, hit_to_kill)
+- LSAM_ABM (150km, 40~60km 고도, 탄도탄 전용)
+- LSAM_AAM (200km, ~20km 고도, 항공기/CM)
+- CHEONGUNG1 (40km, ~15km 고도, 항공기/CM 전용)
+- CHUNMA (9km, ~5km 고도, 저고도 방어)
+
+#### 기존 무기체계 스펙 수정
+- PAC-3 MSE: max_altitude 30→40km, max_range 120→90km
+- 전 사수에 `min_altitude` 필드 추가 (기본 0)
+- 전 사수에 `intercept_method` 필드 추가
+
+#### 센서 3종 신규 + 역할 분리
+- GREEN_PINE (800km, 탄도탄 조기경보, detectable_types=["SRBM"])
+- FPS117 (470km, 방공관제, min_detection_altitude=1.0km)
+- TPS880K (40km, 국지방공, min_detection_altitude=0.05km)
+- 기존 센서에 role="weapon_fc" 기본값 (하위 호환)
+
+#### C2 노드 3종 신규
+- KAMD_OPS (탄도탄 전담), ARMY_LOCAL_AD (육군 국지방공), IAOC (Kill Web 통합)
+
+#### REALISTIC_DEPLOYMENT (한반도 5개 방어구역)
+- Zone A (전방): 천마, 비호, TPS880K
+- Zone B (수도권): PAC-3, 천궁-I/II, 천마(보강)
+- Zone C (중부): 그린파인, FPS117
+- Zone D (남부): THAAD, L-SAM, 그린파인
+
+#### 네트워크 토폴로지 확장
+- `build_realistic_linear_topology()`: 3축 분리 (MCRC↔KAMD 부분연결, 육군 독립)
+- `build_realistic_killweb_topology()`: IAOC 중심 완전 메시
+
+### 테스트 현황
+- v0.7.0: 244개 → v0.7.1: 257개 → v0.7.2: 257개 → v0.7.3: 264개 PASS
+- DEFAULT_DEPLOYMENT 하위 호환 100%
+
+### 알려진 문제
+- 한글 폰트 미지원 (matplotlib 시각화에서 글리프 경고)
+- 천궁-II 탄종 이원화 미구현 (대탄도탄/대항공기 모드 분리 → v0.8)
+- 비호 복합무장 미구현 (기관포+신궁 → v0.8)
+- LAMD 장사정포요격체계 미구현 (미래전력 → v0.8 이후)
+
+---
+
 ## [v0.6.5] — 2026-03-25
 
 ### 변경사항

@@ -7,16 +7,16 @@ Mesa(ABM) + SimPy(DES) + NetworkX 기반 에이전트 시뮬레이션.
 ## 디렉터리 구조
 ```
 modules/
-  config.py      — 모든 파라미터 + TOPOLOGY_RELATIONS (토폴로지 관계 매핑)
-  ontology.py    — Pydantic 도메인 온톨로지 (SensorType/C2Type/ShooterType/ThreatType)
-  registry.py    — 엔티티 레지스트리 (config→온톨로지 변환, Pk 기반 우선순위, 토폴로지 역조회)
-  strategies.py  — 아키텍처 전략 패턴 (LinearC2Strategy/KillWebStrategy)
-  agents.py      — Mesa 에이전트 4종 (Sensor, C2Node, Shooter, Threat) + _slant_range()
-  model.py       — 통합 시뮬레이션 엔진 (AirDefenseModel) — 전략 위임 패턴
-  network.py     — NetworkX 토폴로지 빌더 (선형/킬웹)
+  config.py      — 모든 파라미터 + TOPOLOGY_RELATIONS + REALISTIC_DEPLOYMENT + ENGAGEMENT_LAYERS + THREAT_ID_CONFIG
+  ontology.py    — Pydantic 도메인 온톨로지 (SensorType/C2Type/ShooterType/ThreatType + v0.7 신규 필드)
+  registry.py    — 엔티티 레지스트리 (config→온톨로지 변환, Pk 기반 우선순위, 토폴로지 역조회, 고도 범위 쿼리)
+  strategies.py  — 아키텍처 전략 패턴 (LinearC2Strategy/KillWebStrategy + 3축 분리/위협 식별/센서 큐잉/다축 킬체인)
+  agents.py      — Mesa 에이전트 4종 + _slant_range() + identified_type 기반 Pk 조회
+  model.py       — 통합 시뮬레이션 엔진 — 전략 위임 + 다층 핸드오프 + 다축 킬체인
+  network.py     — NetworkX 토폴로지 빌더 (선형/킬웹 + 현실적 3축/IAOC)
   comms.py       — SimPy 통신 채널 + 킬체인 프로세스 + redundancy_factor 주입
-  metrics.py     — 12개 성능 지표 수집기
-  threats.py     — 위협 생성기 (5개 시나리오)
+  metrics.py     — 18개 성능 지표 수집기 (기존 12 + v0.7 신규 6)
+  threats.py     — 위협 생성기 (7개 시나리오 + TOT 스케줄링 + THREAT_ORIGINS)
   exporters.py   — CZML 내보내기 + CesiumConfigExporter (Cesium 3D 시각화)
   viz.py         — 2D 전술 시각화 (matplotlib.animation 기반)
 cesium-viewer/
@@ -48,40 +48,52 @@ notebook1~5    — Jupyter 노트북 (모델정의, 시나리오, 배치실험, 
 - Pydantic 모델: 빌드 타임(초기화) 검증 전용 — 시뮬레이션 step() 루프에서 Pydantic 호출 금지
 - 테스트: 변경 후 반드시 `python -m pytest tests/` 및 시나리오 1 스모크 테스트 실행
 
-## 핵심 아키텍처 비교 (v0.5 기준, 시나리오 1 seed=42)
-| 항목 | 선형 C2 | Kill Web |
-|------|---------|----------|
-| S2S 시간 | ~344s | ~5s (69배 빠름) |
-| 누출률 | 35.6% | **22.2%** |
-| 교전 성공률 | 37.1% | **37.5%** |
-| 다중교전율 | 14.3% | **16.7%** |
-| 토폴로지 | 계층 체인 (MCRC SPOF) | 완전 메시 (분산) |
-| COP 품질 | 위협 항적만 | **위협 + 아군 상태 + 교전 계획** |
+## 핵심 아키텍처 비교 (v0.7 기준, REALISTIC_DEPLOYMENT S1 seed=42)
+| 항목 | 선형 C2 (3축 분리) | Kill Web (IAOC 통합) |
+|------|-------------------|----------------------|
+| S2S 시간 | ~107s | ~12s (9배 빠름) |
+| 누출률 | 26.7% | **8.9%** (3배 개선) |
+| 교전 성공률 | 80.8% | **53.8%** |
+| 다층 교전 기회 | 2.7회 | **2.1회** (적은 시도 → 높은 효율) |
+| 중복교전율 | 7.7% | **0.0%** (COP 공유 방지) |
+| 토폴로지 | 3축 분리 (MCRC/KAMD/육군) | 완전 메시 (IAOC 통합) |
+| COP 품질 | 위협 항적만 (축 간 미공유) | **위협 + 아군 상태 + 교전 계획** |
 | 센서 융합 | 단일 센서 (σ=0.5km) | **√N 오차 감소 (min 0.1km)** |
-| 사수 선택 | 유형 우선 고정 | **COP 기반 최적 점수 (아군 상태 반영)** |
+| 사수 선택 | 축별 통제 사수만 | **Any Sensor → Best Shooter** |
+| 위협 식별 | 단일 센서 (MLRS 70% 오인식) | **다중 센서 융합 (100% 정확)** |
 | 교전 정책 | 고정 다중 교전 | **적응형 (탄약 기반 자동 전환)** |
-| 통신 열화 | 전역 균일 | **링크별 차등 + 메시 다중경로 완화** |
+| 센서 큐잉 | C2→큐잉 3~10s + 추적 5~15s | **C2→큐잉 1~3s + 추적 2.5~7.5s** |
 
-## 현재 버전: v0.6.5 (Cesium 3D 시각화 통합)
-**상태**: v0.5.1 + CZML Exporter v2 + CesiumJS 3D Viewer + 182개 테스트 (15개 파일)
+## 현재 버전: v0.7.3 (시뮬레이션 현실화)
+**상태**: v0.6.5 + 시뮬레이션 현실화 보완 (무기체계 10종, 센서 7종, C2 6종, 3축 분리, 위협 식별, 다층 교전, 중복교전, 센서 큐잉) + 264개 테스트 (20개 파일)
 
-## 소프트웨어 아키텍처 흐름 (v0.5.1)
+## 소프트웨어 아키텍처 흐름 (v0.7)
 ```
 config.py → ontology.py → registry.py → strategies.py → model.py → agents.py
 (파라미터)   (Pydantic 타입)  (타입 레지스트리)  (전략 패턴)     (시뮬엔진)    (Mesa 에이전트)
+                                            ↓                  ↓
+                                    run_killchain()     다층 핸드오프
+                                    run_killchain_for_axis()  다축 킬체인
+                                    identify_threat_type()    위협 식별
+                                    센서 큐잉 SimPy 지연      SENSOR_CUEING_DELAYS
 ```
 - **초기화 순서**: Registry 로드 → Strategy 생성 → Agent 생성 → Topology 빌드 → Comm 채널
 - **런타임 규칙**: Pydantic 빌드 타임 전용, step() 루프에서 Pydantic 호출 금지
+- **배치 선택**: deployment 파라미터로 DEFAULT_DEPLOYMENT / REALISTIC_DEPLOYMENT 선택
 
-## 모듈별 핵심 역할 (v0.5.1)
-| 모듈 | 핵심 역할 | 비고 |
-|------|-----------|------|
-| `ontology.py` | SensorType/C2Type/ShooterType/ThreatType + 능력 모델 | 토폴로지 관계 필드 내장 |
-| `registry.py` | config→온톨로지 변환, Pk 사수 우선순위, 토폴로지 역조회 | TOPOLOGY_RELATIONS 참조 |
-| `strategies.py` | LinearC2Strategy/KillWebStrategy (9개 추상 메서드) | 11개 if/else 분기 대체 |
-| `exporters.py` | CZMLExporter (보간/교전/토폴로지) + CesiumConfigExporter | v0.6.1 고도화 |
-| `model.py` | 시뮬엔진 — `self.strategy.method()` 위임 | 아키텍처 분기 코드 없음 |
-| `comms.py` | SimPy 통신 — redundancy_factor 주입 | architecture 문자열 의존 제거 |
+## 모듈별 핵심 역할 (v0.7)
+| 모듈 | 핵심 역할 | v0.7 변경 |
+|------|-----------|-----------|
+| `config.py` | 파라미터 집중 관리 | 무기 10종, 센서 7종, C2 6종, REALISTIC_DEPLOYMENT, ENGAGEMENT_LAYERS, THREAT_ID_CONFIG |
+| `ontology.py` | Pydantic 빌드타임 검증 | min_altitude, intercept_method, radar_signature, cost_ratio 필드 |
+| `registry.py` | config→온톨로지, Pk 우선순위, 역조회 | get_sensors_by_role, get_shooters_by_altitude_range |
+| `strategies.py` | Linear 3축 분리 / KillWeb IAOC 통합 | 위협 식별, 센서 큐잉 SimPy 지연, run_killchain_for_axis (다축 킬체인) |
+| `agents.py` | Mesa 에이전트 4종 | identified_type 기준 Pk 조회, detectable_types 필터, min_altitude 체크 |
+| `model.py` | 시뮬엔진 — strategy 위임 | 다층 핸드오프, 다축 킬체인, 축별 교전 추적 |
+| `network.py` | 토폴로지 빌더 | build_realistic_linear/killweb_topology |
+| `threats.py` | 위협 생성기 | TOT 스케줄링, THREAT_ORIGINS 기반 생성 |
+| `metrics.py` | 18개 성능 지표 | 중복교전율, 고가자산소모율, 위협식별정확도, 다층기회, C2간지연 |
+| `comms.py` | SimPy 통신 | redundancy_factor, SENSOR_CUEING_DELAYS |
 
 ## v0.5에서 구현된 핵심 사항
 1. **COP 품질 차별화** — Kill Web: 센서 융합 √N 오차, 아군 상태 공유, 교전 계획 공유
@@ -89,22 +101,29 @@ config.py → ontology.py → registry.py → strategies.py → model.py → age
 3. **통신 네트워크 동적 열화** — 링크별 차등 재밍, Kill Web 메시 다중경로 완화
 4. **2D 전술 시각화 모듈** — TacticalVisualizer (렌더/애니메이션/비교/타임라인)
 
-## v0.6에서 구현된 핵심 사항 (Cesium 3D 시각화)
-1. **CZML Exporter v2** — 궤적 보간(LAGRANGE/LINEAR), 교전 polyline+효과 마커, 토폴로지 연결선
-2. **CesiumConfigExporter** — viewer_config.json (메타데이터/카메라/레이더/포대/교전정책/HUD/좌표)
-3. **CesiumJS 3D Viewer** — Split-screen 비교 모드, 시나리오 선택, 7개 JS 모듈
-4. **3D 시각화** — EllipsoidGeometry 레이더 볼륨, 요격 미사일 궤적, ParticleSystem 폭발
-5. **Military HUD** — 실시간 방어 현황, 교전 카운터, 스크롤 로그
-6. **성능 최적화** — Primitive API 라벨, requestRenderMode (일시정지 CPU 절약)
-7. **자동화** — `run_cesium.py` (시뮬→내보내기→웹서버 단일 명령)
+## v0.7에서 구현된 핵심 사항 (시뮬레이션 현실화)
+1. **무기체계 확장** — THAAD, L-SAM ABM/AAM, 천궁-I, 천마 + min_altitude 고도 필터
+2. **센서 역할 분리** — GREEN_PINE(조기경보), FPS117(방공관제), TPS880K(국지방공) + detectable_types
+3. **C2 3축 분리** — MCRC(항공기/CM), KAMD_OPS(탄도탄), ARMY_LOCAL_AD(저고도) 독립 라우팅
+4. **Kill Web IAOC 통합** — Any Sensor → Best Shooter, 교전상태 COP 공유
+5. **위협 식별 모델** — Linear 단일센서 오인식(70%), KillWeb 다중센서 정확식별(100%)
+6. **KN-25 MLRS** — ballistic 시그니처, cost_ratio=0.01, 장사정포 포화 시나리오
+7. **TOT 스케줄링** — 역산 발사시각으로 동시도착 복합공격
+8. **다층 교전 핸드오프** — 교전 실패 시 다른 유형 사수가 재교전
+9. **중복교전 모델링** — Linear 3축에서 다축 독립 킬체인 → 동일 표적 중복 교전
+10. **센서 큐잉 SimPy 지연** — 큐잉→추적획득→화력통제 단계별 지연
+11. **REALISTIC_DEPLOYMENT** — 한반도 5개 방어구역, THREAT_ORIGINS 기반 위협 생성
+12. **메트릭 6개 추가** — 중복교전율, 고가자산소모율, 위협식별정확도, 다층기회, C2간지연
 
-## 알려진 문제 (v0.6.5)
+## 알려진 문제 (v0.7.3)
 - 한글 폰트 미지원 — matplotlib 시각화에서 한글 글리프 경고
 - 스냅샷 메모리 — record_snapshots=True 시 배치 실험에서 메모리 증가 가능
-- agents.py 온톨로지 DI 미완료 — 현재 config.py 딕셔너리 직접 참조 유지
+- 천궁-II 탄종 이원화 미구현 — 대탄도탄/대항공기 모드 분리 (v0.8)
+- 비호 복합무장 미구현 — 기관포+신궁 (v0.8)
+- LAMD 장사정포요격체계 미구현 — 미래전력 (v0.8 이후)
 - Cesium Ion 토큰 하드코딩 — 환경변수 분리 권장
 
-## 다음 작업: v0.7 (Monte Carlo 통계 분석)
+## 다음 작업: v0.8 (Monte Carlo 통계 분석)
 - 상세 Spec: 추후 계획 수립
 
 ## 자주 쓰는 명령어
@@ -121,7 +140,7 @@ for arch in ['linear', 'killweb']:
     print(f'{arch}: leaker={leaker:.1f}%, s2s={s2s:.1f}s, success={success:.1f}%')
 "
 
-# 전체 테스트
+# 전체 테스트 (264개)
 python -m pytest tests/ -v
 
 # Cesium 3D 시각화 (시뮬→CZML→웹서버)
