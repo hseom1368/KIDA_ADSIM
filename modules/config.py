@@ -718,7 +718,8 @@ SCENARIO_PARAMS = {
         "waves": [
             {"time": 0, "threats": {"SRBM": 8, "CRUISE_MISSILE": 8, "UAS": 15}},
         ],
-        "approach_azimuth": (240, 360),
+        "use_threat_origins": True,  # v0.7.2: THREAT_ORIGINS 기반 발사
+        "approach_azimuth": (240, 360),   # fallback (DEFAULT_DEPLOYMENT용)
         "approach_distance": 200,
         "jamming_level": 0.0,
         "node_destruction": [],
@@ -730,7 +731,8 @@ SCENARIO_PARAMS = {
             {"time": 0, "threats": {"SRBM": 3, "MLRS_GUIDED": 30}},
             {"time": 30, "threats": {"SRBM": 2, "MLRS_GUIDED": 20}},
         ],
-        "approach_azimuth": (260, 340),
+        "use_threat_origins": True,  # v0.7.2: THREAT_ORIGINS 기반 발사
+        "approach_azimuth": (260, 340),   # fallback
         "approach_distance": 180,
         "jamming_level": 0.0,
         "node_destruction": [],
@@ -941,24 +943,26 @@ DEFENSE_ZONES = {
 # =============================================================================
 REALISTIC_DEPLOYMENT = {
     "sensors": [
-        # 전략 조기경보 (Zone C/D)
-        {"type": "GREEN_PINE", "id": "GP_1", "pos": (100, 130)},
-        {"type": "GREEN_PINE", "id": "GP_2", "pos": (80, 250)},
-        # 방공관제 (전국 산악 고지대)
-        {"type": "FPS117", "id": "FPS_1", "pos": (50, 60)},
-        {"type": "FPS117", "id": "FPS_2", "pos": (150, 60)},
-        {"type": "FPS117", "id": "FPS_3", "pos": (100, 150)},
-        {"type": "FPS117", "id": "FPS_4", "pos": (100, 250)},
-        # 국지방공 (전방군단)
-        {"type": "TPS880K", "id": "TPS_1", "pos": (60, 15)},
-        {"type": "TPS880K", "id": "TPS_2", "pos": (100, 15)},
-        {"type": "TPS880K", "id": "TPS_3", "pos": (140, 15)},
-        # 무기체계 전용 레이더 (Zone B)
-        {"type": "PATRIOT_RADAR", "id": "PAT_RADAR_1", "pos": (80, 55)},
-        {"type": "PATRIOT_RADAR", "id": "PAT_RADAR_2", "pos": (120, 55)},
-        {"type": "MSAM_MFR", "id": "MFR_1", "pos": (70, 50)},
-        {"type": "MSAM_MFR", "id": "MFR_2", "pos": (130, 50)},
-        {"type": "SHORAD_RADAR", "id": "SH_RADAR_1", "pos": (100, 20)},
+        # ── Zone C/D: 전략 조기경보 ──
+        {"type": "GREEN_PINE", "id": "GP_1", "pos": (100, 130)},   # 충남
+        {"type": "GREEN_PINE", "id": "GP_2", "pos": (80, 250)},    # 경상
+        # ── Zone B/C: 방공관제 (전국 산악 고지대) ──
+        {"type": "FPS117", "id": "FPS_1", "pos": (50, 60)},        # 수도권 서
+        {"type": "FPS117", "id": "FPS_2", "pos": (150, 60)},       # 수도권 동
+        {"type": "FPS117", "id": "FPS_3", "pos": (100, 150)},      # 중부
+        {"type": "FPS117", "id": "FPS_4", "pos": (100, 250)},      # 남부
+        # ── Zone A: 국지방공 (전방군단 + 수도권 전방) ──
+        {"type": "TPS880K", "id": "TPS_1", "pos": (60, 25)},       # 전방 서
+        {"type": "TPS880K", "id": "TPS_2", "pos": (100, 25)},      # 전방 중앙
+        {"type": "TPS880K", "id": "TPS_3", "pos": (140, 25)},      # 전방 동
+        {"type": "TPS880K", "id": "TPS_4", "pos": (100, 45)},      # 수도권 전방 (UAS 탐지 보강)
+        # ── Zone B: 무기체계 전용 레이더 ──
+        {"type": "PATRIOT_RADAR", "id": "PAT_RADAR_1", "pos": (70, 55)},
+        {"type": "PATRIOT_RADAR", "id": "PAT_RADAR_2", "pos": (130, 55)},
+        {"type": "MSAM_MFR", "id": "MFR_1", "pos": (60, 50)},
+        {"type": "MSAM_MFR", "id": "MFR_2", "pos": (140, 50)},
+        {"type": "SHORAD_RADAR", "id": "SH_RADAR_1", "pos": (100, 35)},  # 수도권 전방 (UAS)
+        {"type": "SHORAD_RADAR", "id": "SH_RADAR_2", "pos": (100, 20)},  # 전방 (UAS)
     ],
     "c2_nodes": {
         "linear": [
@@ -982,29 +986,32 @@ REALISTIC_DEPLOYMENT = {
         ],
     },
     "shooters": [
-        # 고고도 (Zone D) — THAAD, L-SAM ABM
-        {"type": "THAAD", "id": "THAAD_1", "pos": (100, 230)},
+        # ── Zone D (남부 y=180~350): 고고도 ──
+        {"type": "THAAD", "id": "THAAD_1", "pos": (100, 230)},         # 성주
         {"type": "LSAM_ABM", "id": "LSAM_ABM_1", "pos": (80, 200)},
         {"type": "LSAM_ABM", "id": "LSAM_ABM_2", "pos": (120, 200)},
-        # 중고도 (Zone B/C) — PAC-3, 천궁-II, L-SAM AAM
-        {"type": "PATRIOT_PAC3", "id": "PAT_1", "pos": (70, 55)},
-        {"type": "PATRIOT_PAC3", "id": "PAT_2", "pos": (130, 55)},
+        {"type": "LSAM_AAM", "id": "LSAM_AAM_1", "pos": (90, 180)},   # 장거리 항공기/CM
+        {"type": "LSAM_AAM", "id": "LSAM_AAM_2", "pos": (110, 180)},
+        # ── Zone B (수도권 y=30~80): 중고도 ──
+        {"type": "PATRIOT_PAC3", "id": "PAT_1", "pos": (70, 55)},      # 수도권 서
+        {"type": "PATRIOT_PAC3", "id": "PAT_2", "pos": (130, 55)},     # 수도권 동
         {"type": "CHEONGUNG2", "id": "MSAM_1", "pos": (60, 50)},
         {"type": "CHEONGUNG2", "id": "MSAM_2", "pos": (140, 50)},
-        {"type": "LSAM_AAM", "id": "LSAM_AAM_1", "pos": (90, 180)},
-        {"type": "LSAM_AAM", "id": "LSAM_AAM_2", "pos": (110, 180)},
-        # 중저고도 (Zone B) — 천궁-I
-        {"type": "CHEONGUNG1", "id": "CG1_1", "pos": (80, 45)},
+        {"type": "CHEONGUNG1", "id": "CG1_1", "pos": (80, 45)},        # 항공기/CM 전용
         {"type": "CHEONGUNG1", "id": "CG1_2", "pos": (120, 45)},
-        # 저고도 (Zone A/B) — 천마, 비호, KF-16
-        {"type": "CHUNMA", "id": "CHUNMA_1", "pos": (60, 15)},
-        {"type": "CHUNMA", "id": "CHUNMA_2", "pos": (100, 15)},
-        {"type": "CHUNMA", "id": "CHUNMA_3", "pos": (140, 15)},
-        {"type": "BIHO", "id": "BIHO_1", "pos": (80, 10)},
-        {"type": "BIHO", "id": "BIHO_2", "pos": (120, 10)},
-        {"type": "KF16", "id": "KF16_1", "pos": (100, 60)},
+        # ── Zone B (수도권): 천마 보강 (§8.3 ZONE_B) ──
+        {"type": "CHUNMA", "id": "CHUNMA_B1", "pos": (90, 40)},        # 수도권 서
+        {"type": "CHUNMA", "id": "CHUNMA_B2", "pos": (110, 40)},       # 수도권 동
+        # ── Zone A (전방 y=0~30): 저고도 ──
+        {"type": "CHUNMA", "id": "CHUNMA_1", "pos": (60, 20)},         # 전방 서
+        {"type": "CHUNMA", "id": "CHUNMA_2", "pos": (100, 20)},        # 전방 중앙
+        {"type": "CHUNMA", "id": "CHUNMA_3", "pos": (140, 20)},        # 전방 동
+        {"type": "BIHO", "id": "BIHO_1", "pos": (80, 15)},             # 전방 근접
+        {"type": "BIHO", "id": "BIHO_2", "pos": (120, 15)},
+        # ── Zone B: KF-16 ──
+        {"type": "KF16", "id": "KF16_1", "pos": (100, 60)},           # 오산기지
     ],
-    "defense_target": (100, 50),    # 수도권
+    "defense_target": (100, 50),    # 수도권 (서울)
 }
 
 # =============================================================================
@@ -1013,7 +1020,7 @@ REALISTIC_DEPLOYMENT = {
 THREAT_ORIGINS = {
     "DMZ_FRONT": {
         "y": -10,
-        "threat_types": ["CRUISE_MISSILE", "UAS", "AIRCRAFT"],
+        "threat_types": ["CRUISE_MISSILE", "UAS", "AIRCRAFT", "MLRS_GUIDED"],
     },
     "PYONGYANG_AREA": {
         "y": -180,

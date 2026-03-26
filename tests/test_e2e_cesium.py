@@ -148,8 +148,8 @@ class TestE2ECesiumIntegration:
 
     def test_baseline_unchanged(self):
         """시뮬레이션 기준선 불변 (exporters 변경이 model에 영향 없음)."""
-        # v0.7: PAC-3 MSE max_range 120→90 반영으로 기준선 갱신
-        for arch, expected_leaker in [("linear", 33.3), ("killweb", 20.0)]:
+        # v0.7.2: 센서 큐잉 SimPy 지연 추가로 S2S 증가 → 기준선 갱신
+        for arch, expected_leaker in [("linear", 37.8), ("killweb", 22.2)]:
             m = AirDefenseModel(
                 architecture=arch, scenario="scenario_1_saturation", seed=42,
             )

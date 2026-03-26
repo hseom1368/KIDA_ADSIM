@@ -21,6 +21,7 @@ from .config import (
     ADAPTIVE_ENGAGEMENT, COMM_DEGRADATION,
     ENGAGEMENT_LAYERS, THREAT_LAYER_MAP,
     THREAT_ID_CONFIG, C2_AXIS_CONTROL, THREAT_C2_AXIS,
+    SENSOR_CUEING_DELAYS,
 )
 from .network import (
     build_linear_topology, build_killweb_topology,
@@ -188,7 +189,28 @@ class LinearC2Strategy(ArchitectureStrategy):
             c2.processed_count += 1
             model.metrics.record_c2_decision(model.simpy_env.now, c2.agent_id)
 
-        # 3. C2 → 사수 통보
+        # 3. C2 → 무기체계 큐잉 (v0.7.2 센서 큐잉 지연)
+        cueing_delay = random.uniform(*SENSOR_CUEING_DELAYS["c2_to_weapon_cueing_linear"])
+        model.killchain.log_event(
+            threat_id, "weapon_cueing",
+            f"C2→weapon cueing={cueing_delay:.1f}s (linear)")
+        yield model.simpy_env.timeout(cueing_delay)
+
+        # 4. 무기체계 레이더 추적 획득
+        acq_delay = random.uniform(*SENSOR_CUEING_DELAYS["weapon_radar_acquisition"])
+        model.killchain.log_event(
+            threat_id, "track_acquisition",
+            f"radar acquisition={acq_delay:.1f}s")
+        yield model.simpy_env.timeout(acq_delay)
+
+        # 5. 화력통제 품질 달성
+        fc_delay = random.uniform(*SENSOR_CUEING_DELAYS["track_to_fire_control"])
+        model.killchain.log_event(
+            threat_id, "fire_control",
+            f"fire control quality={fc_delay:.1f}s")
+        yield model.simpy_env.timeout(fc_delay)
+
+        # 6. C2 → 사수 통보
         delay = model.comm_channel.get_delay("c2_to_shooter")
         model.killchain.log_event(
             threat_id, "shooter_notified",
@@ -205,6 +227,20 @@ class LinearC2Strategy(ArchitectureStrategy):
             threat_id, "cleared_for_engagement",
             f"killchain_time={killchain_time:.1f}s")
         model._threats_cleared.add(threat_id)
+
+        # v0.7.2: 축별 cleared 기록 (중복교전 모델링)
+        axis = THREAT_C2_AXIS.get(threat.identified_type, "MCRC")
+        if axis not in model._threats_cleared_by_axis:
+            model._threats_cleared_by_axis[axis] = set()
+        if threat_id in model._threats_cleared_by_axis.get(axis, set()):
+            # 이미 이 축에서 교전된 위협 → 다른 축에서도 교전 (중복교전)
+            model.metrics.record_duplicate_engagement(
+                threat_id, axis,
+                [a for a in model._threats_cleared_by_axis
+                 if threat_id in model._threats_cleared_by_axis[a] and a != axis],
+            )
+        model._threats_cleared_by_axis[axis].add(threat_id)
+
         model.metrics.record_clearance(threat_id, model.simpy_env.now)
 
     def _has_3axis_c2(self, model: AirDefenseModel) -> bool:
@@ -378,7 +414,22 @@ class KillWebStrategy(ArchitectureStrategy):
             model.killchain.log_event(threat_id, "c2_overloaded", "모든 C2 포화")
             return
 
-        # 3. 사수 통보
+        # 3. C2 → 무기체계 큐잉 (v0.7.2 — Kill Web: 짧은 지연)
+        cueing_delay = random.uniform(*SENSOR_CUEING_DELAYS["c2_to_weapon_cueing_killweb"])
+        model.killchain.log_event(
+            threat_id, "weapon_cueing",
+            f"C2→weapon cueing={cueing_delay:.1f}s (killweb)")
+        yield model.simpy_env.timeout(cueing_delay)
+
+        # 4. 무기체계 레이더 추적 획득 (자동 큐잉으로 절반 수준)
+        acq_min, acq_max = SENSOR_CUEING_DELAYS["weapon_radar_acquisition"]
+        acq_delay = random.uniform(acq_min * 0.5, acq_max * 0.5)
+        model.killchain.log_event(
+            threat_id, "track_acquisition",
+            f"radar acquisition={acq_delay:.1f}s (auto-cue)")
+        yield model.simpy_env.timeout(acq_delay)
+
+        # 5. 사수 통보
         delay = model.comm_channel.get_delay("c2_to_shooter")
         model.killchain.log_event(
             threat_id, "shooter_notified",

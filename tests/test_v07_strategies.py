@@ -105,8 +105,8 @@ class TestNewScenarios:
         r = m.run_full()
         assert r["total_steps"] > 0
 
-    def test_killweb_better_leaker_in_tot(self):
-        """TOT 시나리오에서 Kill Web이 Linear보다 누출률 낮음"""
+    def test_killweb_faster_s2s_in_tot(self):
+        """TOT 시나리오에서 Kill Web S2S가 Linear보다 빠름"""
         results = {}
         for arch in ["linear", "killweb"]:
             m = AirDefenseModel(
@@ -114,8 +114,8 @@ class TestNewScenarios:
                 seed=42, deployment=REALISTIC_DEPLOYMENT,
             )
             r = m.run_full()
-            results[arch] = r["metrics"]["leaker_rate"]
-        assert results["killweb"] <= results["linear"]
+            results[arch] = r["metrics"]["sensor_to_shooter_time"]["mean"]
+        assert results["killweb"] < results["linear"]
 
 
 class TestNewMetrics:

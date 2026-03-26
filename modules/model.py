@@ -136,6 +136,10 @@ class AirDefenseModel(Model):
         self._threats_cleared = set()           # 킬체인 완료 → 교전 대기
         self._threats_leaked = set()            # 누출 기록 완료
         self._destroyed_nodes = set()           # 이미 파괴된 노드
+        # v0.7.2: 다층 교전 핸드오프 추적
+        self._threats_engaged_layers = {}       # {threat_id: set(shooter_types)}
+        # v0.7.2: 중복교전 — 축별 cleared 추적 (Linear 3축)
+        self._threats_cleared_by_axis = {}      # {axis: set(threat_ids)}
 
     def _create_defense_agents(self):
         """방어 에이전트 생성"""
@@ -373,11 +377,19 @@ class AirDefenseModel(Model):
             if max_shooters <= 0:
                 continue
 
+            # v0.7.2: 이미 교전 시도한 사수 유형은 제외 (다층 핸드오프)
+            tried_types = self._threats_engaged_layers.get(threat.unique_id, set())
+            type_excluded = set()
+            for sh in self.shooter_agents:
+                if sh.weapon_type in tried_types:
+                    type_excluded.add(sh.agent_id)
+            combined_excluded = engaged_shooters_this_step | type_excluded
+
             assigned_shooters = []
             for _ in range(max_shooters):
                 # strategy 위임: 사수 선정
                 shooter = self.strategy.select_shooter(
-                    self, threat, engaged_shooters_this_step
+                    self, threat, combined_excluded
                 )
                 if not shooter:
                     break
@@ -385,6 +397,7 @@ class AirDefenseModel(Model):
                     break
                 assigned_shooters.append(shooter)
                 engaged_shooters_this_step.add(shooter.agent_id)
+                combined_excluded.add(shooter.agent_id)
 
             if not assigned_shooters:
                 continue
@@ -407,6 +420,12 @@ class AirDefenseModel(Model):
                                  pk_bonus=fusion_pk_bonus)
             individual_hits.append((shooter, hit))
 
+            # v0.7.2: 다층 교전 추적 — 교전 시도한 사수 유형 기록
+            tid = threat.unique_id
+            if tid not in self._threats_engaged_layers:
+                self._threats_engaged_layers[tid] = set()
+            self._threats_engaged_layers[tid].add(shooter.weapon_type)
+
             # 최적 사수 비교 (메트릭용)
             optimal = self.strategy.select_shooter(self, threat)
             optimal_id = optimal.agent_id if optimal else shooter.agent_id
@@ -421,6 +440,14 @@ class AirDefenseModel(Model):
                 self.metrics.record_expensive_asset_use(
                     shooter.weapon_type, threat.actual_type, threat.cost_ratio,
                 )
+
+            # v0.7.2: 교전 계층 기록
+            self.metrics.record_layer_attempt(
+                threat.unique_id, shooter.weapon_type, self.sim_time, hit,
+            )
+            if hasattr(threat, 'engagement_attempts'):
+                threat.engagement_attempts.append(
+                    (shooter.weapon_type, self.sim_time, hit))
 
             self.killchain.log_event(
                 threat.unique_id, "engagement",

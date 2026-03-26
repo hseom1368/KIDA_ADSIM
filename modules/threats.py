@@ -7,7 +7,7 @@ import math
 import random
 import numpy as np
 
-from .config import THREAT_PARAMS, SCENARIO_PARAMS, DEFAULT_DEPLOYMENT
+from .config import THREAT_PARAMS, SCENARIO_PARAMS, DEFAULT_DEPLOYMENT, THREAT_ORIGINS
 
 
 def generate_threats_for_scenario(scenario_name, model, seed=None):
@@ -40,19 +40,25 @@ def generate_threats_for_scenario(scenario_name, model, seed=None):
         )
     elif scenario.get("tot_scheduling"):
         # v0.7.1: TOT 스케줄링 (동시 도착 역산)
+        use_origins = scenario.get("use_threat_origins", False)
         threat_specs = _generate_tot_threats(
-            scenario, defense_target, approach_azimuth, approach_distance
+            scenario, defense_target, approach_azimuth, approach_distance,
+            use_origins=use_origins,
         )
     else:
         # 파상 공격 패턴
+        use_origins = scenario.get("use_threat_origins", False)
         waves = scenario.get("waves", [])
         for wave in waves:
             t = wave["time"]
             for threat_type, count in wave["threats"].items():
                 for _ in range(count):
-                    pos = _random_approach_position(
-                        defense_target, approach_azimuth, approach_distance
-                    )
+                    if use_origins:
+                        pos = _origin_based_position(threat_type, defense_target)
+                    else:
+                        pos = _random_approach_position(
+                            defense_target, approach_azimuth, approach_distance
+                        )
                     threat_specs.append((threat_type, pos, defense_target, t))
 
     return threat_specs
@@ -111,8 +117,24 @@ def _random_approach_position(defense_target, azimuth_range, distance):
     return (x, y)
 
 
+def _origin_based_position(threat_type, defense_target):
+    """v0.7.2: THREAT_ORIGINS 기반 위협 발사 위치 생성.
+
+    위협 유형에 맞는 발사원점 Y좌표에서 X를 랜덤 배치.
+    """
+    # 해당 위협 유형이 포함된 발사원점 찾기
+    for origin_name, origin in THREAT_ORIGINS.items():
+        if threat_type in origin["threat_types"]:
+            y = origin["y"]
+            # X 좌표: 방어목표 기준 ±80km 범위
+            x = defense_target[0] + random.uniform(-80, 80)
+            return (x, y)
+    # fallback: DMZ 전방
+    return (defense_target[0] + random.uniform(-50, 50), -10)
+
+
 def _generate_tot_threats(scenario, defense_target, approach_azimuth,
-                          approach_distance):
+                          approach_distance, use_origins=False):
     """v0.7.1: TOT(Time-on-Target) 스케줄링 — 동시 도착을 위한 역산 발사시각"""
     tot_impact_time = scenario.get("tot_impact_time", 600)
     waves = scenario.get("waves", [])
@@ -135,9 +157,12 @@ def _generate_tot_threats(scenario, defense_target, approach_azimuth,
                 avg_speed = params["speed"]
 
             for _ in range(count):
-                pos = _random_approach_position(
-                    defense_target, approach_azimuth, approach_distance
-                )
+                if use_origins:
+                    pos = _origin_based_position(threat_type, defense_target)
+                else:
+                    pos = _random_approach_position(
+                        defense_target, approach_azimuth, approach_distance
+                    )
                 dist = math.dist(pos, defense_target)
                 flight_time = dist / max(avg_speed, 0.001)
                 # 역산 발사시각: 동시 도달을 위해 비행시간만큼 앞당김
